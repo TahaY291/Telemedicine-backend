@@ -28,7 +28,7 @@ export const updatePatientSchema = z.object({
   password: z.string().min(6).optional(),
   role: z.enum(["patient"]).optional(),
   personalInfo: z.object({
-    dob: z.string().optional(), // ISO date string
+    dob: z.string().optional(),
     gender: z.enum(["male", "female", "other", "prefer not to say"]).optional(),
     address: z.object({
       city: z.string().optional(),

@@ -1,11 +1,24 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { roleBasedRegisterSchema } from "../utils/validation/patient.validation.js";
+import { loginSchema, roleBasedRegisterSchema } from "../utils/validation/user.validation.js";
 import { ApiResponse } from '../utils/ApiResponse.js'
 import { ApiError } from '../utils/ApiError.js'
-import { Patient } from "../models/patient.model.js";
-import {Doctor} from "../models/doctor.model.js";
-import {Admin} from "../models/admin.model.js";
+import { User } from "../models/user.model.js";
 
+const generateAccessAndRefreshToken = async (userId) => {
+    try {
+        const user = await User.findById(userId)
+        if (!user) {
+            throw new ApiError(404, "User not found")
+        }
+        const accessToken = user.generateAccessToken()
+        const refreshToken = user.generateRefreshToken()
+        user.refreshToken = refreshToken
+        await user.save({ validateBeforeSave: false })
+        return { accessToken, refreshToken }
+    } catch (error) {
+        throw new ApiError(500, "Failed to generate tokens")
+    }
+}
 
 const roleBasedRegisterUser = asyncHandler(async (req, res) => {
     const { username, email, password, role } = req.body
@@ -14,24 +27,61 @@ const roleBasedRegisterUser = asyncHandler(async (req, res) => {
     const validated = roleBasedRegisterSchema.safeParse(userData)
 
     if (!validated.success) {
-        throw new ApiError(400, "All feilds are required")
+        throw new ApiError(400, "All fields are required")
+    }
+    const allowedRoles = ["patient", "doctor"]
+
+    if (!allowedRoles.includes(validated.data.role)) {
+        throw new ApiError(400, "Invalid role")
     }
 
-    const existedUser = await Patient.findOne({ email })
-    if (existedUser) {
-        throw new ApiError(400, "Email already in use")
-    }
+    const existingUser = await User.findOne({ email: validated.data.email })
 
-    if (role === "patient") {
-        const patient = await Patient.create(userData)
-        return res.status(201).json(new ApiResponse(201, patient, "Patient registered successfully"))
-    } else if (role === "doctor") {
-        const doctor = await Doctor.create(userData)
-        return res.status(201).json(new ApiResponse(201, doctor, "Doctor registered successfully"))
-    } else if (role === "admin") {
-        const admin = await Admin.create(userData)
-        return res.status(201).json(new ApiResponse(201, admin, "Admin registered successfully"))
+    if (existingUser) {
+        throw new ApiError(400, "User with this email already exists")
     }
+    const newUser = await User.create(validated.data)
+    const createdUser = await User.findById(newUser._id).select("-password -refreshToken")
+    if (!createdUser) {
+        throw new ApiError(500, "Failed to create user")
+    }
+    return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully"))
+
 })
 
-export { roleBasedRegisterUser }
+const loginUser = asyncHandler(async (req, res) => {
+    const { email, password } = req.body
+    const validated = loginSchema.safeParse({ email, password })
+
+    if (!validated.success) {
+        throw new ApiError(400, "Email and password are required")
+    }
+
+    const existedUser = await User.findOne({ email: validated.data.email }).select("+password")
+
+    if (!existedUser) {
+        throw new ApiError(401, "Invalid email or password")
+    }
+
+    const isMatch = await existedUser.isPasswordCorrect(validated.data.password)
+    if (!isMatch) {
+        throw new ApiError(401, "Invalid email or password")
+    }
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(existedUser._id)
+
+    const loggedInUser = await User.findById(existedUser._id).select("-password -refreshToken")
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res.status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+        new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "User logged in successfully")
+    )
+})
+export { roleBasedRegisterUser, loginUser }
