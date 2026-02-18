@@ -13,8 +13,8 @@ app.use(express.static("public"))
 app.use(cookieParser())
 
 //route import
-import patientRouter from './routes/patient.routes.js'
+import userRouter from './routes/user.routes.js'
 
-app.use('/api/v1/users' , patientRouter)
+app.use('/api/v1/users' , userRouter)
 
 export { app }
