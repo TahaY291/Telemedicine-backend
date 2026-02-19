@@ -3,6 +3,7 @@ import { loginSchema, roleBasedRegisterSchema } from "../utils/validation/user.v
 import { ApiResponse } from '../utils/ApiResponse.js'
 import { ApiError } from '../utils/ApiError.js'
 import { User } from "../models/user.model.js";
+import jwt from "jsonwebtoken";
 
 const generateAccessAndRefreshToken = async (userId) => {
     try {
@@ -70,7 +71,9 @@ const loginUser = asyncHandler(async (req, res) => {
 
     const { accessToken, refreshToken } = await generateAccessAndRefreshToken(existedUser._id)
 
-    const loggedInUser = await User.findById(existedUser._id).select("-password -refreshToken")
+
+    const loggedInUser = await User.findById(existedUser._id)
+        .select("_id username email role isActive isVerified status");
 
     const options = {
         httpOnly: true,
@@ -78,11 +81,11 @@ const loginUser = asyncHandler(async (req, res) => {
     }
 
     return res.status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
-    .json(
-        new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "User logged in successfully")
-    )
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(200, { user: loggedInUser , accessToken, refreshToken }, "User logged in successfully")
+        )
 })
 
 const logoutUser = asyncHandler(async (req, res) => {
@@ -90,10 +93,10 @@ const logoutUser = asyncHandler(async (req, res) => {
         {
             $set: { refreshToken: undefined },
         },
-    {
-        new: true,
-    })
-     const options = {
+        {
+            new: true,
+        })
+    const options = {
         httpOnly: true,
         secure: true
     }
@@ -103,4 +106,38 @@ const logoutUser = asyncHandler(async (req, res) => {
     )
 })
 
-export { roleBasedRegisterUser, loginUser ,  logoutUser}
+const refreshAccessToken = asyncHandler(async (req, res) => {
+    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+    if (!incomingRefreshToken) {
+        throw new ApiError(400, "Unauthorized: No refresh token provided")
+    }
+    try {
+        const decodedTokem = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+    
+        const user = await User.findById(decodedTokem?._id)
+        if (!user) {
+            throw new ApiError(401, "Unauthorized: Invalid refresh token")
+        }    
+    
+        if (user?.refreshToken !== incomingRefreshToken) {
+            throw new ApiError(401, "Unauthorized: Refresh token mismatch")
+        }
+    
+        const options = {
+            httpOnly: true,
+            secure: true
+        }
+         const { accessToken, newRefreshToken } = await generateAccessAndRefreshToken(user._id)
+    
+        return res.status(200)
+            .cookie("accessToken", accessToken, options)
+            .cookie("refreshToken", newRefreshToken, options)
+            .json(
+                new ApiResponse(200, { accessToken, refreshToken: newRefreshToken }, "Access token refreshed successfully")
+            )
+    } catch (error) {
+        throw new ApiError(401, "Unauthorized: Invalid refresh token")
+    }
+})
+
+export { roleBasedRegisterUser, loginUser, logoutUser ,refreshAccessToken }
