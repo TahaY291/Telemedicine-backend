@@ -11,9 +11,13 @@ const generateAccessAndRefreshToken = async (userId) => {
         if (!user) {
             throw new ApiError(404, "User not found")
         }
+        
         const accessToken = user.generateAccessToken()
         const refreshToken = user.generateRefreshToken()
+        
         user.refreshToken = refreshToken
+        user.lastLogin = new Date()
+
         await user.save({ validateBeforeSave: false })
         return { accessToken, refreshToken }
     } catch (error) {
@@ -77,28 +81,30 @@ const loginUser = asyncHandler(async (req, res) => {
 
     const options = {
         httpOnly: true,
-        secure: true
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict"
     }
 
     return res.status(200)
         .cookie("accessToken", accessToken, options)
         .cookie("refreshToken", refreshToken, options)
         .json(
-            new ApiResponse(200, { user: loggedInUser , accessToken, refreshToken }, "User logged in successfully")
+            new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "User logged in successfully")
         )
 })
 
 const logoutUser = asyncHandler(async (req, res) => {
     await User.findByIdAndUpdate(req.user._id,
         {
-            $set: { refreshToken: undefined },
+            $set: { refreshToken: null },
         },
         {
             new: true,
         })
     const options = {
         httpOnly: true,
-        secure: true
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict"
     }
 
     return res.status(200).clearCookie("accessToken", options).clearCookie("refreshToken", options).json(
@@ -113,31 +119,32 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     }
     try {
         const decodedTokem = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
-    
+
         const user = await User.findById(decodedTokem?._id)
         if (!user) {
             throw new ApiError(401, "Unauthorized: Invalid refresh token")
-        }    
-    
+        }
+
         if (user?.refreshToken !== incomingRefreshToken) {
             throw new ApiError(401, "Unauthorized: Refresh token mismatch")
         }
-    
+
         const options = {
             httpOnly: true,
-            secure: true
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict"
         }
-         const { accessToken, newRefreshToken } = await generateAccessAndRefreshToken(user._id)
-    
+        const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id)
+
         return res.status(200)
             .cookie("accessToken", accessToken, options)
-            .cookie("refreshToken", newRefreshToken, options)
+            .cookie("refreshToken", refreshToken, options)
             .json(
-                new ApiResponse(200, { accessToken, refreshToken: newRefreshToken }, "Access token refreshed successfully")
+                new ApiResponse(200, { accessToken, refreshToken }, "Access token refreshed successfully")
             )
     } catch (error) {
         throw new ApiError(401, "Unauthorized: Invalid refresh token")
     }
 })
 
-export { roleBasedRegisterUser, loginUser, logoutUser ,refreshAccessToken }
+export { roleBasedRegisterUser, loginUser, logoutUser, refreshAccessToken }

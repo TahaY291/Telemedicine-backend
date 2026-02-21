@@ -18,7 +18,7 @@ const consultationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Appointment",
       required: true,
-      unique: true, // One consultation per appointment
+      unique: true,
     },
     prescriptionId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -45,6 +45,31 @@ const consultationSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+
+    symptoms: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+
+    vitalSigns: {
+      bloodPressure: { type: String },  // e.g "120/80 mmHg"
+      heartRate:     { type: Number },  // bpm
+      temperature:   { type: Number },  // celsius
+      weight:        { type: Number },  // kg
+      height:        { type: Number },  // cm
+      oxygenLevel:   { type: Number },  // SpO2 % — useful for telemedicine
+    },
+
+    testResults: [
+      {
+        name:       { type: String, trim: true }, // e.g "Blood Test", "X-Ray Chest"
+        fileUrl:    { type: String },              // URL after upload to cloud storage
+        uploadedBy: { type: String, enum: ["patient", "doctor"] },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -60,7 +85,7 @@ consultationSchema.post("save", async function (doc) {
   if (doc.status === "completed") {
     try {
       const Doctor = mongoose.model("Doctor");
-      
+
       await Doctor.findByIdAndUpdate(doc.doctorId, {
         $inc: { numberOfConsultations: 1 },
         statsLastUpdated: new Date(),
@@ -76,7 +101,7 @@ consultationSchema.post("findOneAndDelete", async function (doc) {
   if (doc && doc.status === "completed") {
     try {
       const Doctor = mongoose.model("Doctor");
-      
+
       await Doctor.findByIdAndUpdate(doc.doctorId, {
         $inc: { numberOfConsultations: -1 },
         statsLastUpdated: new Date(),
