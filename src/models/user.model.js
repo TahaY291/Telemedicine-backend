@@ -51,6 +51,22 @@ const userSchema = new Schema({
     lastLogin: {
         type: Date,
     },
+    verifyOTP: {
+        type: String,
+        default: null,
+    },
+    verifyOTPExpiry: {
+        type: Number,
+        default: 0,
+    },
+    resetOTP:{
+        type: String,
+        default: null,
+    },
+    resetOTPExpiry: {
+        type: Number,
+        default: 0,
+    }
 },
     { timestamps: true }
 )

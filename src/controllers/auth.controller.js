@@ -4,6 +4,7 @@ import { ApiResponse } from '../utils/ApiResponse.js'
 import { ApiError } from '../utils/ApiError.js'
 import { User } from "../models/user.model.js";
 import jwt from "jsonwebtoken";
+import transporter from "../utils/nodemailer.js";
 
 const generateAccessAndRefreshToken = async (userId) => {
     try {
@@ -50,6 +51,19 @@ const roleBasedRegisterUser = asyncHandler(async (req, res) => {
     if (!createdUser) {
         throw new ApiError(500, "Failed to create user")
     }
+
+    const mailOptions = {
+        from: process.env.SMTP_USER,
+        to: createdUser.email,
+        subject: "Welcome to Smart Telemedicine System",
+        text: `Dear ${createdUser.username},\n\nThank you for registering as a ${createdUser.role} on our Smart Telemedicine System. We are excited to have you on board!\n\nBest regards,\nSmart Telemedicine Team`
+    }
+
+    const response = await transporter.sendMail(mailOptions)
+    if (!response.accepted.length) {
+        throw new ApiError(500, "Failed to send welcome email")
+    }
+
     return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully"))
 
 })
