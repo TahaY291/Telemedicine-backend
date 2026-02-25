@@ -6,16 +6,17 @@ import { User } from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import transporter from "../utils/nodemailer.js";
 
+
 const generateAccessAndRefreshToken = async (userId) => {
     try {
         const user = await User.findById(userId)
         if (!user) {
             throw new ApiError(404, "User not found")
         }
-        
+
         const accessToken = user.generateAccessToken()
         const refreshToken = user.generateRefreshToken()
-        
+
         user.refreshToken = refreshToken
         user.lastLogin = new Date()
 
@@ -53,7 +54,7 @@ const roleBasedRegisterUser = asyncHandler(async (req, res) => {
     }
 
     const mailOptions = {
-        from: process.env.SMTP_USER,
+        from: process.env.SENDER_EMAIL,
         to: createdUser.email,
         subject: "Welcome to Smart Telemedicine System",
         text: `Dear ${createdUser.username},\n\nThank you for registering as a ${createdUser.role} on our Smart Telemedicine System. We are excited to have you on board!\n\nBest regards,\nSmart Telemedicine Team`
@@ -161,4 +162,132 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     }
 })
 
-export { roleBasedRegisterUser, loginUser, logoutUser, refreshAccessToken }
+const sendVerifyOTP = asyncHandler(async (req, res) => {
+    const userId = req.user._id
+    const user = await User.findById(userId)
+    if (!user) {
+        throw new ApiError(404, "User not found")
+    }
+
+    if (user.isVerified) {
+        throw new ApiError(400, "User already verified")
+    }
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000))
+    user.verifyOTP = otp
+    user.verifyOTPExpiry = new Date(Date.now() + 10 * 60 * 1000)
+
+    await user.save({ validateBeforeSave: false })
+
+    const mailOptions = {
+        from: process.env.SENDER_EMAIL,
+        to: user.email,
+        subject: "Your OTP for Email Verification",
+        text: `Dear ${user.username},\n\nYour OTP for email verification is: ${otp}. This OTP is valid for 10 minutes.\n\nBest regards,\nSmart Telemedicine Team`
+    }
+    try {
+        await transporter.sendMail(mailOptions)
+    } catch (error) {
+        user.verifyOTP = null
+        user.verifyOTPExpiry = 0
+        await user.save({ validateBeforeSave: false })
+        throw new ApiError(500, "Failed to send OTP email")
+    }
+    res.status(200).json(new ApiResponse(200, null, "OTP sent to email successfully"))
+})
+
+const verifyEmail = asyncHandler(async (req, res) => {
+    const userId = req.user._id
+    const { otp } = req.body
+    const user = await User.findById(userId)
+    if (!user) {
+        throw new ApiError(404, "User not found")
+    }
+    if (user.isVerified) {
+        throw new ApiError(400, "User already verified")
+    }
+    if (!user.verifyOTP) {
+        throw new ApiError(400, "No OTP found")
+    }
+
+    if (user.verifyOTPExpiry < Date.now()) {
+        throw new ApiError(400, "OTP has expired")
+    }
+
+    if (user.verifyOTP !== String(otp)) {
+        throw new ApiError(400, "Invalid OTP")
+    }
+
+    user.isVerified = true
+    user.verifyOTP = null
+    user.verifyOTPExpiry = 0
+    await user.save({ validateBeforeSave: false })
+
+    res.status(200).json(new ApiResponse(200, null, "Email verified successfully"))
+})
+
+const checkUserIsAuthenticated = asyncHandler(async (req, res) => {
+    res.status(200).json(new ApiResponse(200, { user: req.user }, "User is authenticated"))
+})
+
+const sendResetPasswordOTP = asyncHandler(async (req, res) => {
+    const { email } = req.body
+    if (!email) {
+        throw new ApiError(400, "Email is required")
+    }
+    const user = await User.findOne({ email })
+    if (!user) {
+        throw new ApiError(404, "User not found")
+    }
+    const otp = String(Math.floor(100000 + Math.random() * 900000))
+    user.resetOTP = otp
+    user.resetOTPExpiry = Date.now() + 10 * 60 * 1000
+    await user.save({ validateBeforeSave: false })
+
+    const mailOptions = {
+        from: process.env.SENDER_EMAIL,
+        to: user.email,
+        subject: "Your OTP for Password Reset",
+        text: `Dear ${user.username},\n\nYour OTP for password reset is: ${otp}. This OTP is valid for 10 minutes.\n\nBest regards,\nSmart Telemedicine Team`
+    }
+    try {
+        await transporter.sendMail(mailOptions)
+    } catch (error) {
+        user.resetOTP = null
+        user.resetOTPExpiry = 0
+        await user.save({ validateBeforeSave: false })
+        throw new ApiError(500, "Failed to send OTP email")
+    }
+    res.status(200).json(new ApiResponse(200, null, "OTP sent to email successfully"))
+})
+
+const verifyResetPassword = asyncHandler(async (req, res) => {
+    const { email, otp, newPassword } = req.body
+    if (!email || !otp || !newPassword) {
+        throw new ApiError(400, "Email, OTP and New Password are required")
+    }
+    const user = await User.findOne({ email })
+    if (!user) {
+        throw new ApiError(404, "User not found")
+    }
+    if (!user.resetOTP) {
+        throw new ApiError(400, "No OTP found")
+    }
+
+    if (user.resetOTPExpiry < Date.now()) {
+        throw new ApiError(400, "OTP has expired")
+    }
+
+    if (user.resetOTP !== String(otp)) {
+        throw new ApiError(400, "Invalid OTP")
+    }
+    user.resetOTP = null
+    user.resetOTPExpiry = 0
+    user.password = newPassword
+    await user.save()
+
+    res.status(200).json(new ApiResponse(200, null, "OTP verified successfully"))
+})
+
+
+export { roleBasedRegisterUser, loginUser, logoutUser, refreshAccessToken, checkUserIsAuthenticated, sendVerifyOTP, verifyEmail, sendResetPasswordOTP, verifyResetPassword }
