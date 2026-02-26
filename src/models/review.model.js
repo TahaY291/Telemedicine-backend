@@ -95,7 +95,7 @@ async function updateDoctorRating(doctorId) {
         const { averageRating = 0, totalReviews = 0 } = stats[0] || {};
 
         await Doctor.findByIdAndUpdate(doctorId, {
-            rating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+            rating: Math.round(averageRating * 10) / 10,
             totalReviews: totalReviews,
             statsLastUpdated: new Date(),
         });
