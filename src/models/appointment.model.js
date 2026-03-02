@@ -2,83 +2,99 @@ import mongoose from "mongoose";
 
 const appointmentSchema = new mongoose.Schema(
   {
-    // 🔗 Relationships
     patient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
       required: true,
     },
-
     doctor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Doctor",
       required: true,
     },
-
-    // 📅 Appointment Schedule
     appointmentDate: {
       type: Date,
       required: true,
     },
-
     timeSlot: {
-      type: String, // e.g. "10:00 AM - 10:30 AM"
+      type: String,
       required: true,
     },
-
-    // 📌 Appointment Status
     status: {
       type: String,
       enum: ["pending", "approved", "rescheduled", "cancelled", "completed"],
       default: "pending",
     },
-
-    // 💻 Consultation Type
     consultationType: {
       type: String,
       enum: ["video", "audio", "chat"],
       default: "video",
     },
-
-    // 📝 Reason & Notes
     reasonForVisit: {
       type: String,
       required: true,
       trim: true,
     },
-
     doctorNotes: {
       type: String,
     },
-
-    // 🔗 Video Call Info (WebRTC)
     meetingLink: {
       type: String,
     },
-
     meetingStartedAt: {
       type: Date,
     },
-
     meetingEndedAt: {
       type: Date,
     },
-
-    // 📄 Prescription Reference
     prescription: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Prescription",
     },
-
-    // ❌ Cancellation Info
     cancelledBy: {
       type: String,
       enum: ["patient", "doctor", "admin"],
     },
-
     cancellationReason: {
       type: String,
     },
+    roomID: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    callLogs: {
+      startedAt: Date,
+      endedAt: Date,
+      duration: Number,
+      terminationReason: {
+        type: String,
+        enum: ["normal", "dropped", "denied"],
+      }
+    },
+    isReviewed: {
+      type: Boolean,
+      default: false,
+    },
+    payment: {
+      amount: { type: Number, required: true },
+      currency: { type: String, default: "PKR" },
+      method: {
+        type: String,
+        enum: ["stripe", "paypal", "razorpay", "jazzcash", "easypaisa", "cash"],
+      },
+      status: {
+        type: String,
+        enum: ["pending", "paid", "failed", "refunded", "partially_refunded"],
+        default: "pending",
+      },
+      transactionId: String,
+      paymentIntentId: String,
+      paidAt: Date,
+      refundedAt: Date,
+      refundAmount: { type: Number, default: 0 },
+      paymentVerified: { type: Boolean, default: false }
+    }
   },
   {
     timestamps: true,
