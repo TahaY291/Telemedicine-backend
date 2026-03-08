@@ -8,18 +8,19 @@ import {
     getPatientAppointments, 
     updateAppointmentStatus 
 } from "../controllers/appointment.controller.js";
+import verifyJWT from "../middlewares/verifyjwt.middleware.js";
 
 const router = Router();
 
 router.use(verifyUser); 
 
-router.post('/create-appointment', createAppointment);
-router.get('/patient-appointments', getPatientAppointments);
-router.put('/cancel-appointment/:appointmentId', cancelAppointment);
+router.post('/create-appointment',verifyJWT,  createAppointment);
+router.get('/patient-appointments',verifyJWT, getPatientAppointments);
+router.put('/cancel-appointment/:appointmentId',verifyJWT, cancelAppointment);
 
-router.get('/doctor-appointments', getDoctorAppointments);
-router.put('/update-appointment/:appointmentId', updateAppointmentStatus);
+router.get('/doctor-appointments',verifyJWT, getDoctorAppointments);
+router.put('/update-appointment/:appointmentId',verifyJWT, updateAppointmentStatus);
 
-router.get('/my-appointments/:appointmentId', getAppointmentById);
+router.get('/my-appointments/:appointmentId',verifyJWT, getAppointmentById);
 
 export default router;
