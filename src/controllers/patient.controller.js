@@ -137,6 +137,34 @@ export const getPatientById = asyncHandler(async (req, res) => {
 });
 
 
+export const uploadPatientProfileImage = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    if (!req.file?.path) {
+        throw new ApiError(400, "No image file provided");
+    }
+
+    const cloudinaryResponse = await uploadOnCloudinary(req.file.path);
+    if (!cloudinaryResponse?.url) {
+        throw new ApiError(500, "Failed to upload profile image");
+    }
+
+    const updatedProfile = await Patient.findOneAndUpdate(
+        { user: userId },
+        { $set: { "personalInfo.profileImage": cloudinaryResponse.url } },
+        { new: true, runValidators: true }
+    ).populate("user", "username email role");
+
+    if (!updatedProfile) {
+        throw new ApiError(404, "Patient profile not found. Please complete your profile first.");
+    }
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, updatedProfile, "Profile image updated successfully"));
+});
+
+
 export const deletePatientProfile = asyncHandler(async (req, res) => {
     const deleted = await Patient.findOneAndDelete({ user: req.user._id });
 

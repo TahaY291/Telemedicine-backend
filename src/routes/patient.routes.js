@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createdPatientProfile, deletePatientProfile, getMyProfile, getPatientById, updatePatientProfile } from "../controllers/patient.controller.js";
+import { createdPatientProfile, deletePatientProfile, getMyProfile, getPatientById, updatePatientProfile, uploadPatientProfileImage } from "../controllers/patient.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyUser } from "../middlewares/auth.middleware.js";
 import verifyJWT from "../middlewares/verifyjwt.middleware.js";
@@ -23,6 +23,14 @@ router.patch(
 router.delete('/patient-profile',verifyJWT,verifyUser, deletePatientProfile)
 
 router.get('/patient-profile/me',verifyJWT, verifyUser, getMyProfile)
+
+router.patch(
+    '/patient-profile/avatar',
+    verifyJWT,
+    verifyUser,
+    upload.single("profileImage"),
+    uploadPatientProfileImage
+)
 
 router.get('/patient-profile/:patientId',verifyJWT, verifyUser, getPatientById)
 
