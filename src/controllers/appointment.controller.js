@@ -4,6 +4,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { Doctor } from "../models/doctor.model.js";
 import { Appointment } from "../models/appointment.model.js";
 import { cancelAppointmentSchema, createAppointmentSchema, updateAppointmentStatusSchema } from "../utils/validation/appointment.validation.js";
+import { Patient } from "../models/patient.model.js";
 
 export const createAppointment = asyncHandler(async (req, res) => {
     const { doctorId, appointmentDate, timeSlot, consultationType, reasonForVisit } = req.body;

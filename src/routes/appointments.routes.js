@@ -15,7 +15,7 @@ const router = Router();
 router.use(verifyUser); 
 
 router.post('/create-appointment',verifyJWT,  createAppointment);
-router.get('/patient-appointments',verifyJWT, getPatientAppointments);
+router.get('/patient-appointments',verifyJWT, verifyUser ,getPatientAppointments);
 router.put('/cancel-appointment/:appointmentId',verifyJWT, cancelAppointment);
 
 router.get('/doctor-appointments',verifyJWT, getDoctorAppointments);

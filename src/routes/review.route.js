@@ -1,5 +1,12 @@
-import { Router } from "express";import { verifyUser } from "../middlewares/auth.middleware.js";
-import { createReview, deleteReview, getDoctorReviews, getMyReviews, updateReview } from "../controllers/review.controller";
+import { Router } from "express";
+import { verifyUser } from "../middlewares/auth.middleware.js";
+import {
+  createReview,
+  deleteReview,
+  getDoctorReviews,
+  getMyReviews,
+  updateReview,
+} from "../controllers/review.controller.js";
 import verifyJWT from "../middlewares/verifyjwt.middleware.js";
 const router = Router()
 
