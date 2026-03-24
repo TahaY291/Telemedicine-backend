@@ -1,34 +1,50 @@
 import { Router } from "express";
-import { createDoctorProfile, deleteDoctorProfile, getDoctorById, getMyProfile, updateDoctorProfile } from "../controllers/doctor.controller.js";
+import {
+  createDoctorProfile, deleteDoctorProfile, getDoctorById,
+  getMyProfile, updateDoctorProfile, listDoctors,
+  getDoctorStats, getMyPatients, getPatientRecords
+} from "../controllers/doctor.controller.js";
 import verifyJWT from "../middlewares/verifyjwt.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyUser } from "../middlewares/auth.middleware.js";
-const router = Router()
 
+const router = Router();
+
+// ── Public ──────────────────────────────────────────────
+router.get("/doctors", listDoctors);
+
+// ── Specific routes FIRST (before :doctorId wildcard) ──
+router.get("/doctor-profile/me",        verifyUser, verifyJWT, getMyProfile);
+router.get("/doctor-stats",             verifyUser, verifyJWT, getDoctorStats);
+router.get("/my-patients",              verifyUser, verifyJWT, getMyPatients);
+router.get("/patient/:patientId/records", verifyUser, verifyJWT, getPatientRecords);
+
+// ── Parameterized route LAST ─────────────────────────────
+router.get("/doctor-profile/:doctorId", verifyUser, verifyJWT, getDoctorById);
+
+// ── Mutations ────────────────────────────────────────────
 router.post(
-    '/doctor-detail',
-    verifyUser,upload.fields([
-        { name: "doctorImage", maxCount: 1 },
-        { name: "certificateImage", maxCount: 1 }
-    ]),
-    verifyJWT,
-    createDoctorProfile
-)
+  "/doctor-detail",
+  verifyUser,
+  upload.fields([
+    { name: "doctorImage",      maxCount: 1 },
+    { name: "certificateImage", maxCount: 1 },
+  ]),
+  verifyJWT,
+  createDoctorProfile
+);
 
 router.patch(
-    '/doctor-profile',
-    verifyUser,upload.fields([
-        { name: "doctorImage", maxCount: 1 },
-        { name: "certificateImage", maxCount: 1 }
-    ]),
-    verifyJWT,
-    updateDoctorProfile
-)
+  "/doctor-profile",
+  verifyUser,
+  upload.fields([
+    { name: "doctorImage",      maxCount: 1 },
+    { name: "certificateImage", maxCount: 1 },
+  ]),
+  verifyJWT,
+  updateDoctorProfile
+);
 
-router.delete('/doctor-profile',verifyJWT, verifyUser, deleteDoctorProfile)
+router.delete("/doctor-profile", verifyUser, verifyJWT, deleteDoctorProfile);
 
-router.get('/doctor-profile/me',verifyJWT,  verifyUser, getMyProfile)
-
-router.get('/doctor-profile/:doctorId',verifyJWT, verifyUser, getDoctorById)
-
-export default router
+export default router;

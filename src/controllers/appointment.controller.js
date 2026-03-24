@@ -7,7 +7,6 @@ import { cancelAppointmentSchema, createAppointmentSchema, updateAppointmentStat
 import { Patient } from "../models/patient.model.js";
 
 export const createAppointment = asyncHandler(async (req, res) => {
-    const { doctorId, appointmentDate, timeSlot, consultationType, reasonForVisit } = req.body;
 
     if (req.user.role !== "patient") {
         throw new ApiError(403, "Only patients can book appointments");
@@ -15,8 +14,10 @@ export const createAppointment = asyncHandler(async (req, res) => {
 
     const validation = createAppointmentSchema.safeParse(req.body);
     if (!validation.success) {
+        console.log("Validation errors:", JSON.stringify(validation.error.errors, null, 2));
         throw new ApiError(400, "Invalid appointment data", validation.error.errors);
     }
+    const { doctorId, appointmentDate, timeSlot, consultationType, reasonForVisit } = validation.data;
 
     const selectedDate = new Date(appointmentDate);
     const today = new Date();
@@ -35,7 +36,7 @@ export const createAppointment = asyncHandler(async (req, res) => {
         doctor: doctorId,
         appointmentDate: selectedDate,
         timeSlot,
-        status: "approved"
+        status: "approved",
     });
 
     if (isSlotTaken) {
@@ -50,6 +51,11 @@ export const createAppointment = asyncHandler(async (req, res) => {
         consultationType,
         reasonForVisit,
         status: "pending",
+        payment: {
+            amount: doctor.consultationFee || 0,
+            method: "cash",
+            status: "pending",
+        },
     });
 
     return res.status(201).json(
@@ -117,22 +123,22 @@ export const getAppointmentById = asyncHandler(async (req, res) => {
 });
 
 export const updateAppointmentStatus = asyncHandler(async (req, res) => {
-    
+
     const validation = updateAppointmentStatusSchema.safeParse(req.body);
     if (!validation.success) {
         throw new ApiError(400, "Invalid status update data", validation.error.errors);
     }
 
-    const { 
-        status, 
-        doctorNotes, 
-        meetingLink, 
-        newAppointmentDate, 
-        newTimeSlot, 
-        cancellationReason 
+    const {
+        status,
+        doctorNotes,
+        meetingLink,
+        newAppointmentDate,
+        newTimeSlot,
+        cancellationReason
     } = validation.data;
 
-    const doctorProfile = await Doctor.findOne({ user: req.user._id });
+    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
     if (!doctorProfile) throw new ApiError(404, "Doctor profile not found");
 
     const appointment = await Appointment.findById(req.params.appointmentId);
@@ -142,34 +148,30 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Forbidden: This is not your appointment");
     }
 
-    if (status === "approved" && appointment.payment.status !== "paid") {
-        throw new ApiError(400, "Cannot approve: Payment has not been verified yet.");
-    }
-
     if (status === "approved") {
-        appointment.meetingLink = meetingLink; 
-        
+        appointment.meetingLink = meetingLink;
+
         if (!appointment.roomID && appointment.consultationType !== "chat") {
             appointment.roomID = `room_${appointment._id}_${Math.random().toString(36).substring(7)}`;
         }
-    } 
-    
+    }
+
     else if (status === "rescheduled") {
         appointment.appointmentDate = newAppointmentDate;
         appointment.timeSlot = newTimeSlot;
-    } 
-    
+    }
+
     else if (status === "cancelled") {
         appointment.cancelledBy = "doctor";
         appointment.cancellationReason = cancellationReason || "Cancelled by doctor";
-        
+
         if (appointment.payment.status === "paid") {
             appointment.payment.status = "refunded";
             appointment.payment.refundedAt = new Date();
-            appointment.payment.refundAmount = appointment.payment.amount; 
+            appointment.payment.refundAmount = appointment.payment.amount;
         }
-    } 
-    
+    }
+
     else if (status === "completed") {
         appointment.meetingEndedAt = new Date();
     }
@@ -220,5 +222,99 @@ export const cancelAppointment = asyncHandler(async (req, res) => {
 
     return res.status(200).json(
         new ApiResponse(200, appointment, "Appointment cancelled successfully")
+    );
+});
+
+export const startCall = asyncHandler(async (req, res) => {
+    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
+    if (!doctorProfile) throw new ApiError(404, "Doctor profile not found");
+
+    const appointment = await Appointment.findById(req.params.appointmentId);
+    if (!appointment) throw new ApiError(404, "Appointment not found");
+
+    if (appointment.doctor.toString() !== doctorProfile._id.toString()) {
+        throw new ApiError(403, "Not your appointment");
+    }
+
+    if (appointment.status !== "approved") {
+        throw new ApiError(400, "Appointment must be approved before starting a call");
+    }
+
+    if (appointment.meetingEndedAt) {
+        throw new ApiError(400, "This call has already ended");
+    }
+
+    if (!appointment.roomID) {
+        appointment.roomID = `room_${appointment._id}_${Date.now()}`;
+    }
+
+    appointment.meetingStartedAt = new Date();
+    appointment.callLogs = {
+        startedAt: new Date(),
+        terminationReason: null,
+    };
+
+    await appointment.save();
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            roomID: appointment.roomID,
+            appointmentId: appointment._id,
+            consultationType: appointment.consultationType,
+        }, "Call started")
+    );
+});
+
+export const endCall = asyncHandler(async (req, res) => {
+    const appointment = await Appointment.findById(req.params.appointmentId);
+    if (!appointment) throw new ApiError(404, "Appointment not found");
+
+    // ← ADD THIS — verify the caller is the doctor or patient involved
+    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
+    const patientProfile = await Patient.findOne({ user: req.user._id });
+
+    const isDoctor = doctorProfile && appointment.doctor.toString() === doctorProfile._id.toString();
+    const isPatient = patientProfile && appointment.patient.toString() === patientProfile._id.toString();
+
+    if (!isDoctor && !isPatient) {
+        throw new ApiError(403, "You are not authorized to end this call");
+    }
+
+    const now = new Date();
+    appointment.meetingEndedAt = now;
+
+    if (appointment.callLogs?.startedAt) {
+        const durationMs = now - appointment.callLogs.startedAt;
+        appointment.callLogs.endedAt = now;
+        appointment.callLogs.duration = Math.floor(durationMs / 1000);
+        appointment.callLogs.terminationReason = "normal";
+    }
+
+    await appointment.save();
+
+    return res.status(200).json(
+        new ApiResponse(200, appointment, "Call ended")
+    );
+});
+
+export const getRoomId = asyncHandler(async (req, res) => {
+    const patientProfile = await Patient.findOne({ user: req.user._id });
+    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
+
+    const appointment = await Appointment.findById(req.params.appointmentId);
+    if (!appointment) throw new ApiError(404, "Appointment not found");
+
+    // Only the involved doctor or patient can get the room
+    const isPatient = patientProfile && appointment.patient.toString() === patientProfile._id.toString();
+    const isDoctor = doctorProfile && appointment.doctor.toString() === doctorProfile._id.toString();
+
+    if (!isPatient && !isDoctor) throw new ApiError(403, "Unauthorized");
+    if (!appointment.roomID) throw new ApiError(404, "Call has not been started yet");
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            roomID: appointment.roomID,
+            consultationType: appointment.consultationType,
+        }, "Room fetched")
     );
 });

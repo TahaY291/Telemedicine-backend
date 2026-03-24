@@ -6,8 +6,16 @@ const objectId = z
 
 const futureDate = z
     .string({ required_error: "Appointment date is required" })
-    .refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date format" })
-    .refine((val) => new Date(val) > new Date(), { message: "Appointment date must be in the future" });
+    .refine((val) => {
+        const d = new Date(val);
+        return !isNaN(d.getTime());
+    }, { message: "Invalid date format" })
+    .refine((val) => {
+        const submitted = new Date(val);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // compare by day, not time
+        return submitted >= today;
+    }, { message: "Appointment date must be today or in the future" });
 
 const timeSlotRegex = /^(0?[1-9]|1[0-2]):[0-5]\d\s(AM|PM)\s-\s(0?[1-9]|1[0-2]):[0-5]\d\s(AM|PM)$/;
 

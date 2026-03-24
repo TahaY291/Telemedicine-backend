@@ -128,37 +128,47 @@ const logoutUser = asyncHandler(async (req, res) => {
 })
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+    const incomingRefreshToken =
+        req.cookies?.refreshToken || req.body?.refreshToken;
+
     if (!incomingRefreshToken) {
-        throw new ApiError(400, "Unauthorized: No refresh token provided")
+        return res
+            .status(401)
+            .json({ success: false, message: "Not logged in: refresh token missing" });
     }
     try {
-        const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+        const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
 
-        const user = await User.findById(decodedToken?._id)
+        const user = await User.findById(decodedToken?._id);
         if (!user) {
-            throw new ApiError(401, "Unauthorized: Invalid refresh token")
+            return res
+                .status(401)
+                .json({ success: false, message: "Unauthorized: invalid refresh token" });
         }
 
         if (user?.refreshToken !== incomingRefreshToken) {
-            throw new ApiError(401, "Unauthorized: Refresh token mismatch")
+            return res
+                .status(401)
+                .json({ success: false, message: "Unauthorized: refresh token mismatch" });
         }
 
         const options = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "strict"
-        }
-        const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id)
+        };
+        const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id);
 
         return res.status(200)
             .cookie("accessToken", accessToken, options)
             .cookie("refreshToken", refreshToken, options)
             .json(
                 new ApiResponse(200, { accessToken, refreshToken }, "Access token refreshed successfully")
-            )
+            );
     } catch (error) {
-        throw new ApiError(401, "Unauthorized: Invalid refresh token")
+        return res
+            .status(401)
+            .json({ success: false, message: "Unauthorized: invalid refresh token" });
     }
 })
 
