@@ -42,55 +42,37 @@ export const createAppointmentSchema = z.object({
 });
 
 export const updateAppointmentStatusSchema = z
-    .object({
-        status: z.enum(["approved", "rescheduled", "cancelled", "completed"], {
-            required_error: "Status is required",
-            errorMap: () => ({ message: "Invalid status value" }),
-        }),
+  .object({
+    status: z.enum(["approved", "rescheduled", "cancelled", "completed"]),
 
-        doctorNotes: z
-            .string()
-            .trim()
-            .max(1000, "Notes cannot exceed 1000 characters")
-            .optional(),
+    doctorNotes: z.string().trim().max(1000).optional(),
 
-        meetingLink: z
-            .string()
-            .url("Meeting link must be a valid URL")
-            .optional(),
+    meetingLink: z.string().url().optional(),
 
-        newAppointmentDate: futureDate.optional(),
+    newAppointmentDate: futureDate.optional(),
 
-        newTimeSlot: z
-            .string()
-            .regex(timeSlotRegex, "Invalid time slot format. Expected: '10:00 AM - 10:30 AM'")
-            .optional(),
-    })
-    .refine(
-        (data) => {
-            if (data.status === "rescheduled") {
-                return !!data.newAppointmentDate && !!data.newTimeSlot;
-            }
-            return true;
-        },
-        {
-            message: "newAppointmentDate and newTimeSlot are required when rescheduling",
-            path: ["newAppointmentDate"],
-        }
-    )
-    .refine(
-        (data) => {
-            if (data.status === "approved") {
-                return !!data.meetingLink;
-            }
-            return true;
-        },
-        {
-            message: "Meeting link is required when approving an appointment",
-            path: ["meetingLink"],
-        }
-    );
+    newTimeSlot: z.string().regex(timeSlotRegex).optional(),
 
+    cancellationReason: z.string().trim().min(5).max(300).optional(),
+  })
+  .refine((data) => {
+    if (data.status === "rescheduled") {
+      return !!data.newAppointmentDate && !!data.newTimeSlot;
+    }
+    return true;
+  }, {
+    message: "Date & time required for reschedule",
+    path: ["newAppointmentDate"],
+  })
+  .refine((data) => {
+    if (data.status === "cancelled") {
+      return !!data.cancellationReason;
+    }
+    return true;
+  }, {
+    message: "Cancellation reason required",
+    path: ["cancellationReason"],
+  });
 export const cancelAppointmentSchema = z.object({
     cancellationReason: z
         .string()

@@ -4,7 +4,8 @@ import { ApiError } from "../utils/ApiError.js";
 import { Review } from "../models/review.model.js";
 import { Appointment } from "../models/appointment.model.js";
 import { Patient } from "../models/patient.model.js";
-import { createReviewSchema } from "../utils/validation/review.validation.js";
+import { createReviewSchema , updateReviewSchema } from "../utils/validation/review.validation.js";
+import mongoose from "mongoose";
 
 export const createReview = asyncHandler(async (req, res) => {
     const { appointmentId, rating, comment, punctuality, communication, treatment } = req.body;

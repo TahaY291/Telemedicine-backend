@@ -26,9 +26,9 @@ export const createPrescription = asyncHandler(async (req, res) => {
     }
 
 
-    if (appointment.status !== "completed") {
-        throw new ApiError(400, "Prescription can only be created for completed appointments");
-    }
+    if (!["approved", "completed"].includes(appointment.status)) {
+    throw new ApiError(400, "Prescription can only be created for approved or completed appointments");
+}
 
 
     const existing = await Prescription.findOne({ appointmentId });

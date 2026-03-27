@@ -3,6 +3,7 @@ import { verifyUser } from "../middlewares/auth.middleware.js";
 import verifyJWT from "../middlewares/verifyjwt.middleware.js";
 import {
     cancelAppointment,
+    completeCall,
     createAppointment,
     endCall,
     getAppointmentById,
@@ -29,5 +30,6 @@ router.get('/:appointmentId/room', verifyJWT, getRoomId);
 router.post('/:appointmentId/start-call', verifyJWT, startCall);
 router.post('/:appointmentId/end-call', verifyJWT, endCall);
 router.get('/:appointmentId', verifyJWT, getAppointmentById);
+router.post("/:appointmentId/complete-call",  verifyJWT, completeCall);
 
 export default router;

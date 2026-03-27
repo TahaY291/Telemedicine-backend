@@ -125,6 +125,8 @@ export const getAppointmentById = asyncHandler(async (req, res) => {
 export const updateAppointmentStatus = asyncHandler(async (req, res) => {
 
     const validation = updateAppointmentStatusSchema.safeParse(req.body);
+    console.log(req.body)
+    console.log(validation.data)
     if (!validation.success) {
         throw new ApiError(400, "Invalid status update data", validation.error.errors);
     }
@@ -316,5 +318,35 @@ export const getRoomId = asyncHandler(async (req, res) => {
             roomID: appointment.roomID,
             consultationType: appointment.consultationType,
         }, "Room fetched")
+    );
+});
+
+export const completeCall = asyncHandler(async (req, res) => {
+    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
+    if (!doctorProfile) throw new ApiError(404, "Doctor profile not found");
+
+    const appointment = await Appointment.findById(req.params.appointmentId);
+    if (!appointment) throw new ApiError(404, "Appointment not found");
+
+    if (appointment.doctor.toString() !== doctorProfile._id.toString())
+        throw new ApiError(403, "Not your appointment");
+
+    const now = new Date();
+
+    // Save call logs
+    appointment.meetingEndedAt = now;
+    if (appointment.callLogs?.startedAt) {
+        appointment.callLogs.endedAt = now;
+        appointment.callLogs.duration = Math.floor((now - appointment.callLogs.startedAt) / 1000);
+        appointment.callLogs.terminationReason = "normal";
+    }
+
+    // Mark completed
+    appointment.status = "completed";
+
+    await appointment.save();
+
+    return res.status(200).json(
+        new ApiResponse(200, appointment, "Call completed")
     );
 });
