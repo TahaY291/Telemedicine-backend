@@ -91,8 +91,12 @@ export const getDoctorAppointments = asyncHandler(async (req, res) => {
     if (status) filter.status = status;
 
     const appointments = await Appointment.find(filter)
-        .populate("patient", "personalInfo phoneNumber")
-        .sort({ appointmentDate: 1 }); // ascending — upcoming first for doctors
+        .populate({
+            path: "patient",
+            select: "personalInfo phoneNumber user",
+            populate: { path: "user", select: "username email" }, // ← add nested populate
+        })
+        .sort({ appointmentDate: 1 });
 
     return res
         .status(200)
@@ -122,11 +126,11 @@ export const getAppointmentById = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, appointment, "Appointment fetched successfully"));
 });
 
+
+
 export const updateAppointmentStatus = asyncHandler(async (req, res) => {
 
     const validation = updateAppointmentStatusSchema.safeParse(req.body);
-    console.log(req.body)
-    console.log(validation.data)
     if (!validation.success) {
         throw new ApiError(400, "Invalid status update data", validation.error.errors);
     }
@@ -140,44 +144,75 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         cancellationReason
     } = validation.data;
 
-    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
-    if (!doctorProfile) throw new ApiError(404, "Doctor profile not found");
-
+    // ✅ 1. Get appointment
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-    if (appointment.doctor.toString() !== doctorProfile._id.toString()) {
-        throw new ApiError(403, "Forbidden: This is not your appointment");
+    // ✅ 2. Detect role
+    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
+    const patientProfile = await Patient.findOne({ user: req.user._id }); // ✅ FIXED: was Patient.findById(appointment.patient)
+
+    const isDoctor = !!doctorProfile;
+    const isPatient = !!patientProfile;
+
+    // ✅ 3. AUTHORIZATION
+    if (isDoctor) {
+        if (appointment.doctor.toString() !== doctorProfile._id.toString()) {
+            throw new ApiError(403, "Forbidden: This is not your appointment");
+        }
+    } else if (isPatient) {
+        // ✅ FIXED: use 'user' field (not 'userId'), and query by logged-in user
+        if (appointment.patient.toString() !== patientProfile._id.toString()) {
+            throw new ApiError(403, "Forbidden: This is not your appointment");
+        }
+    } else {
+        throw new ApiError(403, "Forbidden: Unrecognized role");
     }
 
-    if (status === "approved") {
-        appointment.meetingLink = meetingLink;
-
-        if (!appointment.roomID && appointment.consultationType !== "chat") {
-            appointment.roomID = `room_${appointment._id}_${Math.random().toString(36).substring(7)}`;
+    // ✅ 4. PATIENT LOGIC
+    if (isPatient) {
+        if (status === "approved") {
+            // Patient can only approve a rescheduled appointment
+            if (appointment.status !== "rescheduled") {
+                throw new ApiError(400, "You can only accept rescheduled appointments");
+            }
+        } else if (status === "cancelled") {
+            appointment.cancelledBy = "patient";
+            appointment.cancellationReason = cancellationReason || "Cancelled by patient";
+        } else {
+            throw new ApiError(403, "Patients can only accept reschedules or cancel appointments");
         }
     }
 
-    else if (status === "rescheduled") {
-        appointment.appointmentDate = newAppointmentDate;
-        appointment.timeSlot = newTimeSlot;
-    }
-
-    else if (status === "cancelled") {
-        appointment.cancelledBy = "doctor";
-        appointment.cancellationReason = cancellationReason || "Cancelled by doctor";
-
-        if (appointment.payment.status === "paid") {
-            appointment.payment.status = "refunded";
-            appointment.payment.refundedAt = new Date();
-            appointment.payment.refundAmount = appointment.payment.amount;
+    // ✅ 5. DOCTOR LOGIC
+    if (isDoctor) {
+        if (status === "approved") {
+            appointment.meetingLink = meetingLink;
+            if (!appointment.roomID && appointment.consultationType !== "chat") {
+                appointment.roomID = `room_${appointment._id}_${Math.random().toString(36).substring(7)}`;
+            }
+        } else if (status === "rescheduled") {
+            if (!newAppointmentDate || !newTimeSlot) {
+                throw new ApiError(400, "New date and time slot are required for rescheduling");
+            }
+            appointment.appointmentDate = newAppointmentDate;
+            appointment.timeSlot = newTimeSlot;
+        } else if (status === "cancelled") {
+            appointment.cancelledBy = "doctor";
+            appointment.cancellationReason = cancellationReason || "Cancelled by doctor";
+            if (appointment.payment?.status === "paid") {
+                appointment.payment.status = "refunded";
+                appointment.payment.refundedAt = new Date();
+                appointment.payment.refundAmount = appointment.payment.amount;
+            }
+        } else if (status === "completed") {
+            appointment.meetingEndedAt = new Date();
+        } else {
+            throw new ApiError(400, "Invalid status for doctor");
         }
     }
 
-    else if (status === "completed") {
-        appointment.meetingEndedAt = new Date();
-    }
-
+    // ✅ 6. FINAL UPDATE
     appointment.status = status;
     if (doctorNotes) appointment.doctorNotes = doctorNotes;
 
@@ -187,6 +222,7 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         new ApiResponse(200, appointment, `Appointment ${status} successfully`)
     );
 });
+
 
 export const cancelAppointment = asyncHandler(async (req, res) => {
 

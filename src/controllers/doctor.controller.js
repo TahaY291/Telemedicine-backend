@@ -6,6 +6,8 @@ import { createDoctorSchema, updateDoctorSchema } from "../utils/validation/doct
 import { Doctor } from "../models/doctor.model.js";
 import { Appointment } from "../models/appointment.model.js";
 import { Consultation } from "../models/consultation.model.js";
+import { Patient } from '../models/patient.model.js'
+import { Prescription } from "../models/prescription.model.js";
 
 
 export const createDoctorProfile = asyncHandler(async (req, res) => {
