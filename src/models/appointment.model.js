@@ -85,7 +85,7 @@ const appointmentSchema = new mongoose.Schema(
       },
       status: {
         type: String,
-        enum: ["pending", "paid", "failed", "refunded", "partially_refunded"],
+        enum: ["pending", "approved", "rescheduled", "cancelled", "completed", "expired"], // ✅ added expired
         default: "pending",
       },
       transactionId: String,
@@ -94,7 +94,11 @@ const appointmentSchema = new mongoose.Schema(
       refundedAt: Date,
       refundAmount: { type: Number, default: 0 },
       paymentVerified: { type: Boolean, default: false }
-    }
+    },
+    isDraft: {                          // ✅ ADD THIS
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

@@ -6,10 +6,12 @@ import {
     completeCall,
     createAppointment,
     endCall,
+    expireAppointments,
     getAppointmentById,
     getDoctorAppointments,
     getPatientAppointments,
     getRoomId,
+    markAsPaid,
     startCall,
     updateAppointmentStatus
 } from "../controllers/appointment.controller.js";
@@ -31,5 +33,8 @@ router.post('/:appointmentId/start-call', verifyJWT, startCall);
 router.post('/:appointmentId/end-call', verifyJWT, endCall);
 router.get('/:appointmentId', verifyJWT, getAppointmentById);
 router.post("/:appointmentId/complete-call",  verifyJWT, completeCall);
+router.post("/:appointmentId/pay", verifyJWT, markAsPaid);
+router.post("/expire", verifyJWT,  expireAppointments);
+
 
 export default router;

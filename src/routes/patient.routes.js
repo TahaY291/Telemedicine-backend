@@ -22,6 +22,8 @@ router.patch(
 
 router.delete('/patient-profile',verifyJWT,verifyUser, deletePatientProfile)
 
+router.get('/patient-profile/:patientId',verifyJWT, verifyUser, getPatientById)
+
 router.get('/patient-profile/me',verifyJWT, verifyUser, getMyProfile)
 
 router.patch(
@@ -32,6 +34,5 @@ router.patch(
     uploadPatientProfileImage
 )
 
-router.get('/patient-profile/:patientId',verifyJWT, verifyUser, getPatientById)
 
 export default router

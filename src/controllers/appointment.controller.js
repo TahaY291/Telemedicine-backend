@@ -85,16 +85,17 @@ export const getDoctorAppointments = asyncHandler(async (req, res) => {
     const doctorProfile = await Doctor.findOne({ userId: req.user._id });
     if (!doctorProfile) throw new ApiError(404, "Doctor profile not found");
 
-    const { status } = req.query;
+    const { status, patientId } = req.query; // ✅ extract patientId
 
     const filter = { doctor: doctorProfile._id };
     if (status) filter.status = status;
+    if (patientId) filter.patient = patientId; // ✅ add this line
 
     const appointments = await Appointment.find(filter)
         .populate({
             path: "patient",
             select: "personalInfo phoneNumber user",
-            populate: { path: "user", select: "username email" }, // ← add nested populate
+            populate: { path: "user", select: "username email" },
         })
         .sort({ appointmentDate: 1 });
 
@@ -307,11 +308,10 @@ export const endCall = asyncHandler(async (req, res) => {
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-    // ← ADD THIS — verify the caller is the doctor or patient involved
-    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
+    const doctorProfile  = await Doctor.findOne({ userId: req.user._id });
     const patientProfile = await Patient.findOne({ user: req.user._id });
 
-    const isDoctor = doctorProfile && appointment.doctor.toString() === doctorProfile._id.toString();
+    const isDoctor  = doctorProfile  && appointment.doctor.toString()  === doctorProfile._id.toString();
     const isPatient = patientProfile && appointment.patient.toString() === patientProfile._id.toString();
 
     if (!isDoctor && !isPatient) {
@@ -320,19 +320,36 @@ export const endCall = asyncHandler(async (req, res) => {
 
     const now = new Date();
     appointment.meetingEndedAt = now;
-
     if (appointment.callLogs?.startedAt) {
         const durationMs = now - appointment.callLogs.startedAt;
-        appointment.callLogs.endedAt = now;
-        appointment.callLogs.duration = Math.floor(durationMs / 1000);
+        appointment.callLogs.endedAt          = now;
+        appointment.callLogs.duration         = Math.floor(durationMs / 1000);
         appointment.callLogs.terminationReason = "normal";
     }
-
     await appointment.save();
 
-    return res.status(200).json(
-        new ApiResponse(200, appointment, "Call ended")
-    );
+    // ✅ Auto-create draft prescription if none exists
+    if (isDoctor) {
+        const { Prescription } = await import("../models/prescription.model.js");
+        const existing = await Prescription.findOne({ appointmentId: appointment._id });
+        if (!existing) {
+            await Prescription.create({
+                appointmentId: appointment._id,
+                doctorId:      doctorProfile._id,
+                patientId:     appointment.patient,
+                diagnosis:     "Pending — to be updated by doctor",
+                medicines:     [{
+                    name:     "N/A",
+                    dosage:   "N/A",
+                    duration: "N/A",
+                }],
+                notes:   appointment.reasonForVisit || "",
+                isDraft: true,
+            });
+        }
+    }
+
+    return res.status(200).json(new ApiResponse(200, appointment, "Call ended"));
 });
 
 export const getRoomId = asyncHandler(async (req, res) => {
@@ -368,21 +385,94 @@ export const completeCall = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Not your appointment");
 
     const now = new Date();
-
-    // Save call logs
     appointment.meetingEndedAt = now;
     if (appointment.callLogs?.startedAt) {
-        appointment.callLogs.endedAt = now;
-        appointment.callLogs.duration = Math.floor((now - appointment.callLogs.startedAt) / 1000);
+        appointment.callLogs.endedAt          = now;
+        appointment.callLogs.duration         = Math.floor((now - appointment.callLogs.startedAt) / 1000);
         appointment.callLogs.terminationReason = "normal";
     }
-
-    // Mark completed
     appointment.status = "completed";
+    await appointment.save();
+
+    // ✅ Auto-create draft prescription if none exists
+    const { Prescription } = await import("../models/prescription.model.js");
+    const existing = await Prescription.findOne({ appointmentId: appointment._id });
+    if (!existing) {
+        await Prescription.create({
+            appointmentId: appointment._id,
+            doctorId:      doctorProfile._id,
+            patientId:     appointment.patient,
+            diagnosis:     "Pending — to be updated by doctor",
+            medicines:     [{
+                name:     "N/A",
+                dosage:   "N/A",
+                duration: "N/A",
+            }],
+            notes:   appointment.reasonForVisit || "",
+            isDraft: true,
+        });
+    }
+
+    return res.status(200).json(new ApiResponse(200, appointment, "Call completed"));
+});
+
+export const markAsPaid = asyncHandler(async (req, res) => {
+    const patientProfile = await Patient.findOne({ user: req.user._id });
+    if (!patientProfile) throw new ApiError(404, "Patient profile not found");
+
+    const appointment = await Appointment.findById(req.params.appointmentId);
+    if (!appointment) throw new ApiError(404, "Appointment not found");
+
+    if (appointment.patient.toString() !== patientProfile._id.toString())
+        throw new ApiError(403, "Not your appointment");
+
+    if (appointment.payment.status === "paid")
+        throw new ApiError(400, "Already paid");
+
+    appointment.payment.status      = "paid";
+    appointment.payment.method      = "cash";
+    appointment.payment.paidAt      = new Date();
+    appointment.payment.paymentVerified = true;
 
     await appointment.save();
 
     return res.status(200).json(
-        new ApiResponse(200, appointment, "Call completed")
+        new ApiResponse(200, appointment, "Payment confirmed")
+    );
+});
+
+export const expireAppointments = asyncHandler(async (req, res) => {
+    const now = new Date();
+
+    // Parse slot end time from timeSlot string like "10:00 AM - 10:30 AM"
+    const parseSlotEnd = (appointmentDate, timeSlot) => {
+        try {
+            const endPart = timeSlot.split(" - ")[1]?.trim();
+            if (!endPart) return null;
+            const [timePart, meridiem] = endPart.split(" ");
+            let [hours, minutes] = timePart.split(":").map(Number);
+            if (meridiem === "PM" && hours !== 12) hours += 12;
+            if (meridiem === "AM" && hours === 12) hours  = 0;
+            const base = new Date(appointmentDate);
+            return new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes, 0);
+        } catch { return null; }
+    };
+
+    const candidates = await Appointment.find({
+        status: { $in: ["pending", "approved", "rescheduled"] },
+    });
+
+    let expiredCount = 0;
+    for (const appt of candidates) {
+        const slotEnd = parseSlotEnd(appt.appointmentDate, appt.timeSlot);
+        if (slotEnd && now > slotEnd) {
+            appt.status = "expired";
+            await appt.save();
+            expiredCount++;
+        }
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, { expiredCount }, `${expiredCount} appointments marked as expired`)
     );
 });

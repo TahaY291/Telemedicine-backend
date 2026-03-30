@@ -65,20 +65,17 @@ export const updatePrescription = asyncHandler(async (req, res) => {
     const prescription = await Prescription.findById(req.params.prescriptionId);
     if (!prescription) throw new ApiError(404, "Prescription not found");
 
-
     if (prescription.doctorId.toString() !== doctorProfile._id.toString()) {
         throw new ApiError(403, "You can only update your own prescriptions");
     }
 
     const updated = await Prescription.findByIdAndUpdate(
         req.params.prescriptionId,
-        { $set: validation.data },
+        { $set: { ...validation.data, isDraft: false } }, 
         { new: true, runValidators: true }
     );
 
-    return res
-        .status(200)
-        .json(new ApiResponse(200, updated, "Prescription updated successfully"));
+    return res.status(200).json(new ApiResponse(200, updated, "Prescription updated successfully"));
 });
 
 
