@@ -22,7 +22,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "rescheduled", "cancelled", "completed"],
+      enum: ["pending", "approved", "rescheduled", "cancelled", "completed", "expired"], // ✅
       default: "pending",
     },
     consultationType: {
@@ -76,6 +76,7 @@ const appointmentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // appointment.model.js ✅
     payment: {
       amount: { type: Number, required: true },
       currency: { type: String, default: "PKR" },
@@ -85,7 +86,7 @@ const appointmentSchema = new mongoose.Schema(
       },
       status: {
         type: String,
-        enum: ["pending", "approved", "rescheduled", "cancelled", "completed", "expired"], // ✅ added expired
+        enum: ["pending", "paid", "refunded", "failed"],  // ✅ correct payment statuses
         default: "pending",
       },
       transactionId: String,
@@ -93,7 +94,7 @@ const appointmentSchema = new mongoose.Schema(
       paidAt: Date,
       refundedAt: Date,
       refundAmount: { type: Number, default: 0 },
-      paymentVerified: { type: Boolean, default: false }
+      paymentVerified: { type: Boolean, default: false },
     },
     isDraft: {                          // ✅ ADD THIS
       type: Boolean,

@@ -26,6 +26,26 @@ export const createAppointment = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Cannot book appointments in the past");
     }
 
+    const isToday = selectedDate.toDateString() === new Date().toDateString();
+if (isToday) {
+    try {
+        const startPart = timeSlot.split(" - ")[0].trim();        // "9:00 AM"
+        const [timePart, meridiem] = startPart.split(" ");
+        let [hours, minutes] = timePart.split(":").map(Number);
+        if (meridiem === "PM" && hours !== 12) hours += 12;
+        if (meridiem === "AM" && hours === 12) hours = 0;
+
+        const slotStart = new Date();
+        slotStart.setHours(hours, minutes, 0, 0);
+
+        if (slotStart <= new Date()) {
+            throw new ApiError(400, "This time slot has already passed. Please choose a future time.");
+        }
+    } catch (err) {
+        if (err instanceof ApiError) throw err;
+    }
+}
+
     const patientProfile = await Patient.findOne({ user: req.user._id });
     if (!patientProfile) throw new ApiError(404, "Patient profile not found");
 
@@ -444,7 +464,6 @@ export const markAsPaid = asyncHandler(async (req, res) => {
 export const expireAppointments = asyncHandler(async (req, res) => {
     const now = new Date();
 
-    // Parse slot end time from timeSlot string like "10:00 AM - 10:30 AM"
     const parseSlotEnd = (appointmentDate, timeSlot) => {
         try {
             const endPart = timeSlot.split(" - ")[1]?.trim();
@@ -452,7 +471,7 @@ export const expireAppointments = asyncHandler(async (req, res) => {
             const [timePart, meridiem] = endPart.split(" ");
             let [hours, minutes] = timePart.split(":").map(Number);
             if (meridiem === "PM" && hours !== 12) hours += 12;
-            if (meridiem === "AM" && hours === 12) hours  = 0;
+            if (meridiem === "AM" && hours === 12) hours = 0;
             const base = new Date(appointmentDate);
             return new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes, 0);
         } catch { return null; }
@@ -466,8 +485,11 @@ export const expireAppointments = asyncHandler(async (req, res) => {
     for (const appt of candidates) {
         const slotEnd = parseSlotEnd(appt.appointmentDate, appt.timeSlot);
         if (slotEnd && now > slotEnd) {
-            appt.status = "expired";
-            await appt.save();
+            // ✅ Use updateOne to bypass any Mongoose validation issues
+            await Appointment.updateOne(
+                { _id: appt._id },
+                { $set: { status: "expired" } }
+            );
             expiredCount++;
         }
     }
