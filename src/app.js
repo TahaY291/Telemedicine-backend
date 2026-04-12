@@ -66,6 +66,8 @@ import appointmentRouter  from './routes/appointments.routes.js';
 import consultationRouter from './routes/consultation.route.js';
 import prescriptionRouter from './routes/prescription.route.js';
 import reviewRouter       from './routes/review.route.js';
+import notificationRouter    from './routes/notification.routes.js';
+import { errorHandler } from './middlewares/error.middleware.js';
 
 app.use('/api/v1/users',         userRouter);
 app.use('/api/v1/patients',      patientRouter);
@@ -74,6 +76,9 @@ app.use('/api/v1/appointments',  appointmentRouter);
 app.use('/api/v1/consultations', consultationRouter);
 app.use('/api/v1/prescriptions', prescriptionRouter);
 app.use('/api/v1/reviews',       reviewRouter);
+app.use('/api/v1/notifications', notificationRouter);
+
+app.use(errorHandler)
 
 // ── Export — never call listen here ──────────────────────────────────────────
 export { app, httpServer };

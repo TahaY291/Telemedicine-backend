@@ -5,6 +5,32 @@ import { Doctor } from "../models/doctor.model.js";
 import { Appointment } from "../models/appointment.model.js";
 import { cancelAppointmentSchema, createAppointmentSchema, updateAppointmentStatusSchema } from "../utils/validation/appointment.validation.js";
 import { Patient } from "../models/patient.model.js";
+import { notifyAppointmentChange } from "../utils/notificatoinService.js";
+
+const populateForNotification = (appointmentId) =>
+    Appointment.findById(appointmentId)
+        .populate({ path: "patient", populate: { path: "user", select: "_id username" } })
+        .populate({ path: "doctor", populate: { path: "userId", select: "_id username" } });
+
+const sendNotification = async (appointmentId, status) => {
+    try {
+        const appt = await populateForNotification(appointmentId);
+        if (!appt) return;
+        await notifyAppointmentChange({
+            appointment: {
+                ...appt.toObject(),
+                patientUserId: appt.patient?.user?._id,
+                doctorUserId:  appt.doctor?.userId?._id,
+            },
+            status,
+            doctorName:  appt.doctor?.userId?.username  ?? "Doctor",
+            patientName: appt.patient?.user?.username   ?? "Patient",
+        });
+    } catch (err) {
+        // Never let a notification failure break the actual API response
+        console.error("Notification error:", err.message);
+    }
+};
 
 export const createAppointment = asyncHandler(async (req, res) => {
 
@@ -27,24 +53,24 @@ export const createAppointment = asyncHandler(async (req, res) => {
     }
 
     const isToday = selectedDate.toDateString() === new Date().toDateString();
-if (isToday) {
-    try {
-        const startPart = timeSlot.split(" - ")[0].trim();        // "9:00 AM"
-        const [timePart, meridiem] = startPart.split(" ");
-        let [hours, minutes] = timePart.split(":").map(Number);
-        if (meridiem === "PM" && hours !== 12) hours += 12;
-        if (meridiem === "AM" && hours === 12) hours = 0;
+    if (isToday) {
+        try {
+            const startPart = timeSlot.split(" - ")[0].trim();
+            const [timePart, meridiem] = startPart.split(" ");
+            let [hours, minutes] = timePart.split(":").map(Number);
+            if (meridiem === "PM" && hours !== 12) hours += 12;
+            if (meridiem === "AM" && hours === 12) hours = 0;
 
-        const slotStart = new Date();
-        slotStart.setHours(hours, minutes, 0, 0);
+            const slotStart = new Date();
+            slotStart.setHours(hours, minutes, 0, 0);
 
-        if (slotStart <= new Date()) {
-            throw new ApiError(400, "This time slot has already passed. Please choose a future time.");
+            if (slotStart <= new Date()) {
+                throw new ApiError(400, "This time slot has already passed. Please choose a future time.");
+            }
+        } catch (err) {
+            if (err instanceof ApiError) throw err;
         }
-    } catch (err) {
-        if (err instanceof ApiError) throw err;
     }
-}
 
     const patientProfile = await Patient.findOne({ user: req.user._id });
     if (!patientProfile) throw new ApiError(404, "Patient profile not found");
@@ -78,6 +104,9 @@ if (isToday) {
         },
     });
 
+    // ── NOTIFY: tell the doctor a new booking request arrived ────────────────
+    await sendNotification(appointment._id, "pending");
+
     return res.status(201).json(
         new ApiResponse(201, appointment, "Appointment request sent to doctor")
     );
@@ -87,7 +116,7 @@ export const getPatientAppointments = asyncHandler(async (req, res) => {
     const patientProfile = await Patient.findOne({ user: req.user._id });
     if (!patientProfile) throw new ApiError(404, "Patient profile not found");
 
-    const { status } = req.query; // optional filter by status
+    const { status } = req.query;
 
     const filter = { patient: patientProfile._id };
     if (status) filter.status = status;
@@ -105,11 +134,11 @@ export const getDoctorAppointments = asyncHandler(async (req, res) => {
     const doctorProfile = await Doctor.findOne({ userId: req.user._id });
     if (!doctorProfile) throw new ApiError(404, "Doctor profile not found");
 
-    const { status, patientId } = req.query; // ✅ extract patientId
+    const { status, patientId } = req.query;
 
     const filter = { doctor: doctorProfile._id };
     if (status) filter.status = status;
-    if (patientId) filter.patient = patientId; // ✅ add this line
+    if (patientId) filter.patient = patientId;
 
     const appointments = await Appointment.find(filter)
         .populate({
@@ -147,8 +176,6 @@ export const getAppointmentById = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, appointment, "Appointment fetched successfully"));
 });
 
-
-
 export const updateAppointmentStatus = asyncHandler(async (req, res) => {
 
     const validation = updateAppointmentStatusSchema.safeParse(req.body);
@@ -165,24 +192,20 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         cancellationReason
     } = validation.data;
 
-    // ✅ 1. Get appointment
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-    // ✅ 2. Detect role
     const doctorProfile = await Doctor.findOne({ userId: req.user._id });
-    const patientProfile = await Patient.findOne({ user: req.user._id }); // ✅ FIXED: was Patient.findById(appointment.patient)
+    const patientProfile = await Patient.findOne({ user: req.user._id });
 
     const isDoctor = !!doctorProfile;
     const isPatient = !!patientProfile;
 
-    // ✅ 3. AUTHORIZATION
     if (isDoctor) {
         if (appointment.doctor.toString() !== doctorProfile._id.toString()) {
             throw new ApiError(403, "Forbidden: This is not your appointment");
         }
     } else if (isPatient) {
-        // ✅ FIXED: use 'user' field (not 'userId'), and query by logged-in user
         if (appointment.patient.toString() !== patientProfile._id.toString()) {
             throw new ApiError(403, "Forbidden: This is not your appointment");
         }
@@ -190,10 +213,8 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Forbidden: Unrecognized role");
     }
 
-    // ✅ 4. PATIENT LOGIC
     if (isPatient) {
         if (status === "approved") {
-            // Patient can only approve a rescheduled appointment
             if (appointment.status !== "rescheduled") {
                 throw new ApiError(400, "You can only accept rescheduled appointments");
             }
@@ -205,7 +226,6 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         }
     }
 
-    // ✅ 5. DOCTOR LOGIC
     if (isDoctor) {
         if (status === "approved") {
             appointment.meetingLink = meetingLink;
@@ -233,17 +253,18 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         }
     }
 
-    // ✅ 6. FINAL UPDATE
     appointment.status = status;
     if (doctorNotes) appointment.doctorNotes = doctorNotes;
 
     await appointment.save();
 
+    // ── NOTIFY: tell the right person about the status change ────────────────
+    await sendNotification(appointment._id, status);
+
     return res.status(200).json(
         new ApiResponse(200, appointment, `Appointment ${status} successfully`)
     );
 });
-
 
 export const cancelAppointment = asyncHandler(async (req, res) => {
 
@@ -278,6 +299,9 @@ export const cancelAppointment = asyncHandler(async (req, res) => {
     }
 
     await appointment.save();
+
+    // ── NOTIFY: tell the doctor their appointment was cancelled ──────────────
+    await sendNotification(appointment._id, "cancelled");
 
     return res.status(200).json(
         new ApiResponse(200, appointment, "Appointment cancelled successfully")
@@ -348,7 +372,6 @@ export const endCall = asyncHandler(async (req, res) => {
     }
     await appointment.save();
 
-    // ✅ Auto-create draft prescription if none exists
     if (isDoctor) {
         const { Prescription } = await import("../models/prescription.model.js");
         const existing = await Prescription.findOne({ appointmentId: appointment._id });
@@ -358,13 +381,9 @@ export const endCall = asyncHandler(async (req, res) => {
                 doctorId:      doctorProfile._id,
                 patientId:     appointment.patient,
                 diagnosis:     "Pending — to be updated by doctor",
-                medicines:     [{
-                    name:     "N/A",
-                    dosage:   "N/A",
-                    duration: "N/A",
-                }],
-                notes:   appointment.reasonForVisit || "",
-                isDraft: true,
+                medicines:     [{ name: "N/A", dosage: "N/A", duration: "N/A" }],
+                notes:         appointment.reasonForVisit || "",
+                isDraft:       true,
             });
         }
     }
@@ -379,7 +398,6 @@ export const getRoomId = asyncHandler(async (req, res) => {
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-    // Only the involved doctor or patient can get the room
     const isPatient = patientProfile && appointment.patient.toString() === patientProfile._id.toString();
     const isDoctor = doctorProfile && appointment.doctor.toString() === doctorProfile._id.toString();
 
@@ -414,7 +432,6 @@ export const completeCall = asyncHandler(async (req, res) => {
     appointment.status = "completed";
     await appointment.save();
 
-    // ✅ Auto-create draft prescription if none exists
     const { Prescription } = await import("../models/prescription.model.js");
     const existing = await Prescription.findOne({ appointmentId: appointment._id });
     if (!existing) {
@@ -423,15 +440,14 @@ export const completeCall = asyncHandler(async (req, res) => {
             doctorId:      doctorProfile._id,
             patientId:     appointment.patient,
             diagnosis:     "Pending — to be updated by doctor",
-            medicines:     [{
-                name:     "N/A",
-                dosage:   "N/A",
-                duration: "N/A",
-            }],
-            notes:   appointment.reasonForVisit || "",
-            isDraft: true,
+            medicines:     [{ name: "N/A", dosage: "N/A", duration: "N/A" }],
+            notes:         appointment.reasonForVisit || "",
+            isDraft:       true,
         });
     }
+
+    // ── NOTIFY: tell the patient their call is marked as completed ───────────
+    await sendNotification(appointment._id, "completed");
 
     return res.status(200).json(new ApiResponse(200, appointment, "Call completed"));
 });
@@ -485,7 +501,6 @@ export const expireAppointments = asyncHandler(async (req, res) => {
     for (const appt of candidates) {
         const slotEnd = parseSlotEnd(appt.appointmentDate, appt.timeSlot);
         if (slotEnd && now > slotEnd) {
-            // ✅ Use updateOne to bypass any Mongoose validation issues
             await Appointment.updateOne(
                 { _id: appt._id },
                 { $set: { status: "expired" } }
