@@ -58,7 +58,14 @@ export const getMyConsultations = asyncHandler(async (req, res) => {
 
     const [consultations, total] = await Promise.all([
         Consultation.find(filter)
-            .populate("doctorId", "userId specialization doctorImage")
+            .populate({
+                path: "doctorId",
+                select: "userId specialization doctorImage",
+                populate: {
+                    path: "userId",
+                    select: "username email",
+                },
+            })
             .populate("appointmentId", "appointmentDate timeSlot consultationType")
             .populate("prescriptionId", "diagnosis medicines followUpDate")
             .sort({ consultationDate: -1 })
