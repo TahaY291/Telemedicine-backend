@@ -36,7 +36,7 @@ const roleBasedRegisterUser = asyncHandler(async (req, res) => {
     if (!validated.success) {
         throw new ApiError(400, "All fields are required")
     }
-    const allowedRoles = ["patient", "doctor"]
+    const allowedRoles = ["patient", "doctor" , "admin"]
 
     if (!allowedRoles.includes(validated.data.role)) {
         throw new ApiError(400, "Invalid role")
@@ -64,6 +64,7 @@ const roleBasedRegisterUser = asyncHandler(async (req, res) => {
     if (!response.accepted.length) {
         throw new ApiError(500, "Failed to send welcome email")
     }
+    console.log(createdUser)
 
     return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully"))
 

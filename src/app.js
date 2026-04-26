@@ -67,6 +67,7 @@ import consultationRouter from './routes/consultation.route.js';
 import prescriptionRouter from './routes/prescription.route.js';
 import reviewRouter       from './routes/review.route.js';
 import notificationRouter    from './routes/notification.routes.js';
+import adminRouter    from './routes/admin.routes.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
 app.use('/api/v1/users',         userRouter);
@@ -77,6 +78,7 @@ app.use('/api/v1/consultations', consultationRouter);
 app.use('/api/v1/prescriptions', prescriptionRouter);
 app.use('/api/v1/reviews',       reviewRouter);
 app.use('/api/v1/notifications', notificationRouter);
+app.use('/api/v1/admin', adminRouter);
 
 app.use(errorHandler)
 
