@@ -7,6 +7,8 @@ import { Appointment } from "../models/appointment.model.js";
 import { Consultation } from "../models/consultation.model.js";
 import { User } from "../models/user.model.js";
 import mongoose from "mongoose";
+import { Prescription } from "../models/prescription.model.js";
+import { Review } from "../models/review.model.js";
 
 export const getTotalModalData = asyncHandler(async (req, res) => {
     if (req.user.role !== "admin") {
@@ -73,7 +75,7 @@ export const getRecentActivity = asyncHandler(async (req, res) => {
         })),
         ...recentPatients.map((patient) => ({
             type: "signup",
-            message: `${patient.name} signed up`,
+            message: `${patient.user.username} signed up`,
             date: patient.createdAt,
         })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date)) // latest first
@@ -155,12 +157,27 @@ export const getDoctorById = asyncHandler(async (req, res) => {
 });
 
 export const deleteDoctorProfile = asyncHandler(async (req, res) => {
-    const { doctorId } = req.params;
-    const deleted = await Doctor.findByIdAndDelete(doctorId);
+      if (req.user.role !== "admin") {
+          throw new ApiError(403, "Only admin is allowed.");
+        }
+        
+        const { doctorId } = req.params;
 
-    if (!deleted) {
-        throw new ApiError(404, "Doctor profile not found");
+    const doctor = await Doctor.findById(doctorId);
+    if (!doctor) {
+        throw new ApiError(404, "Doctor not found");
     }
+
+      const userId = doctor.userId; 
+      
+    await Promise.all([
+
+        Review.deleteMany({ doctorId: doctorId }),
+
+        Doctor.findByIdAndDelete(doctorId),
+
+        User.findByIdAndDelete(userId),
+    ]);
 
     return res
         .status(200)
@@ -185,8 +202,6 @@ export const listDoctors = asyncHandler(async (req, res) => {
             $options: "i",
         };
     }
-
-    filter.isActive = true;
 
     const doctors = await Doctor.find(filter)
         .populate("userId", "username email status isVerified")
@@ -215,9 +230,6 @@ export const updateDoctorStatus = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Associated user not found");
     }
 
-    if (!user._id.equals(doctor.userId)) {
-        throw new ApiError(400, "User and doctor profile mismatch");
-    }
 
     user.status = status;
 
@@ -339,5 +351,98 @@ export const getDoctorStatsForAdmin = asyncHandler(async (req, res) => {
             numberOfConsultations: doctor.numberOfConsultations,
             joinedDate: doctor.createdAt,
         }, "Doctor stats fetched successfully")
+    );
+});
+
+
+export const getPatientById = asyncHandler(async (req, res) => {
+    const { patientId } = req.params;
+
+    const profile = await Patient.findById(patientId).populate(
+        "user",
+        "username email role status isVerified"
+    );
+
+    if (!profile) {
+        throw new ApiError(404, "Patient not found");
+    }
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, profile, "Patient profile fetched successfully"));
+});
+
+export const deletePatientByAdmin = asyncHandler(async (req, res) => {
+    if (req.user.role !== "admin") {
+        throw new ApiError(403, "Only admin is allowed.");
+    }
+
+    const { patientId } = req.params;
+
+    const patient = await Patient.findById(patientId);
+    if (!patient) {
+        throw new ApiError(404, "Patient not found");
+    }
+
+    const userId = patient.user; 
+
+
+    await Promise.all([
+
+        Review.deleteMany({ patientId: patientId }),
+
+        Patient.findByIdAndDelete(patientId),
+
+        User.findByIdAndDelete(userId),
+    ]);
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, null, "Patient and all related data deleted successfully"));
+});
+
+export const listPatients = asyncHandler(async (req, res) => {
+    
+
+    const patients = await Patient.find()
+        .populate("user", "username email status isVerified")
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, patients, "Patients fetched successfully"));
+});
+
+export const updatePatientStatus = asyncHandler(async (req, res) => {
+    const { patientId } = req.params;
+    const { status } = req.body;
+
+    if (!["active", "blocked", "pending"].includes(status)) {
+        throw new ApiError(400, "Invalid status value");
+    }
+
+    const patient = await Patient.findById(patientId);
+    if (!patient) {
+        throw new ApiError(404, "Patient profile not found");
+    }
+
+    const user = await User.findById(patient.user);
+    if (!user) {
+        throw new ApiError(404, "Associated user not found");
+    }
+
+
+    user.status = status;
+
+    if (status === "active") {
+        patient.isVerified = true;
+    } else {
+        patient.isVerified = false;
+    }
+
+    await user.save();
+    await patient.save();
+
+    return res.status(200).json(
+        new ApiResponse(200, { patient, user }, `Patient status updated to ${status}`)
     );
 });
