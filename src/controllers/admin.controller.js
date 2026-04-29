@@ -157,19 +157,19 @@ export const getDoctorById = asyncHandler(async (req, res) => {
 });
 
 export const deleteDoctorProfile = asyncHandler(async (req, res) => {
-      if (req.user.role !== "admin") {
-          throw new ApiError(403, "Only admin is allowed.");
-        }
-        
-        const { doctorId } = req.params;
+    if (req.user.role !== "admin") {
+        throw new ApiError(403, "Only admin is allowed.");
+    }
+
+    const { doctorId } = req.params;
 
     const doctor = await Doctor.findById(doctorId);
     if (!doctor) {
         throw new ApiError(404, "Doctor not found");
     }
 
-      const userId = doctor.userId; 
-      
+    const userId = doctor.userId;
+
     await Promise.all([
 
         Review.deleteMany({ doctorId: doctorId }),
@@ -384,7 +384,7 @@ export const deletePatientByAdmin = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Patient not found");
     }
 
-    const userId = patient.user; 
+    const userId = patient.user;
 
 
     await Promise.all([
@@ -402,7 +402,7 @@ export const deletePatientByAdmin = asyncHandler(async (req, res) => {
 });
 
 export const listPatients = asyncHandler(async (req, res) => {
-    
+
 
     const patients = await Patient.find()
         .populate("user", "username email status isVerified")
@@ -445,4 +445,37 @@ export const updatePatientStatus = asyncHandler(async (req, res) => {
     return res.status(200).json(
         new ApiResponse(200, { patient, user }, `Patient status updated to ${status}`)
     );
+});
+
+export const getAllAppointmentsForAdmin = asyncHandler(async (req, res) => {
+    if (req.user.role !== "admin") throw new ApiError(403, "Only admin is allowed.");
+
+    const appointments = await Appointment.find()
+        .sort({ createdAt: -1 })
+        .populate({ path: "patient", populate: { path: "user", select: "username email" } })
+        .populate({ path: "doctor", select: "specialization userId", populate: { path: "userId", select: "username email" } });
+
+    return res.status(200).json(new ApiResponse(200, appointments, "Appointments fetched"));
+});
+
+export const getAllReviewsForAdmin = asyncHandler(async (req, res) => {
+    if (req.user.role !== "admin") throw new ApiError(403, "Only admin is allowed.");
+
+    const reviews = await Review.find()
+        .sort({ createdAt: -1 })
+        .populate({ path: "patientId", populate: { path: "user", select: "username" } })
+        .populate({ path: "doctorId",  select: "specialization userId",
+                    populate: { path: "userId", select: "username" } });
+
+    return res.status(200).json(new ApiResponse(200, reviews, "Reviews fetched"));
+});
+
+export const deleteReviewByAdmin = asyncHandler(async (req, res) => {
+    if (req.user.role !== "admin") throw new ApiError(403, "Only admin is allowed.");
+
+    const { reviewId } = req.params;
+    const review = await Review.findByIdAndDelete(reviewId);
+
+    if (!review) throw new ApiError(404, "Review not found");
+    return res.status(200).json(new ApiResponse(200, null, "Review deleted"));
 });
