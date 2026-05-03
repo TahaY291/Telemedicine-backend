@@ -6,6 +6,7 @@ import { Appointment } from "../models/appointment.model.js";
 import { cancelAppointmentSchema, createAppointmentSchema, updateAppointmentStatusSchema } from "../utils/validation/appointment.validation.js";
 import { Patient } from "../models/patient.model.js";
 import { notifyAppointmentChange } from "../utils/notificatoinService.js";
+import mongoose from "mongoose";
 
 const populateForNotification = (appointmentId) =>
     Appointment.findById(appointmentId)
@@ -511,5 +512,43 @@ export const expireAppointments = asyncHandler(async (req, res) => {
 
     return res.status(200).json(
         new ApiResponse(200, { expiredCount }, `${expiredCount} appointments marked as expired`)
+    );
+});
+
+export const getBookedSlots = asyncHandler(async (req, res) => {
+    const { doctorId, date } = req.query;
+
+    if (!doctorId || !date) {
+        throw new ApiError(400, "doctorId and date are required");
+    }
+
+    // Validate that doctorId is a valid ObjectId before querying
+    if (!mongoose.Types.ObjectId.isValid(doctorId)) {
+        throw new ApiError(400, "Invalid doctorId format");
+    }
+
+    // Validate date string is a real date
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+        throw new ApiError(400, "Invalid date format. Use YYYY-MM-DD");
+    }
+
+    const dayStart = new Date(date);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(date);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const appointments = await Appointment.find({
+        doctor: new mongoose.Types.ObjectId(doctorId),  // explicit cast
+        appointmentDate: { $gte: dayStart, $lte: dayEnd },
+        status: { $in: ["pending", "approved", "rescheduled"] },
+        // isDraft: false  ← REMOVED: old appointments don't have this field
+        //                   so { isDraft: false } excludes them from results
+    }).select("timeSlot -_id");
+
+    const bookedSlots = appointments.map((a) => a.timeSlot);
+
+    return res.status(200).json(
+        new ApiResponse(200, bookedSlots, "Booked slots fetched successfully")
     );
 });

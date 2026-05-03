@@ -3,6 +3,7 @@ import connectDB from "./db/index.js";
 import { httpServer } from "./app.js";
 
 dotenv.config({ path: './.env' });
+console.log("MONGO URI:", process.env.MONGODB_URI);
 
 connectDB()
   .then(() => {

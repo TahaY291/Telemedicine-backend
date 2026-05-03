@@ -22,6 +22,9 @@ router.get("/patient/:patientId/records", verifyUser, verifyJWT, getPatientRecor
 // ── Parameterized route LAST ─────────────────────────────
 router.get("/doctor-profile/:doctorId", verifyUser, verifyJWT, getDoctorById);
 
+
+
+
 // ── Mutations ────────────────────────────────────────────
 router.post(
   "/doctor-detail",

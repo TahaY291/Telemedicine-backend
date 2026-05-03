@@ -8,6 +8,7 @@ import {
     endCall,
     expireAppointments,
     getAppointmentById,
+    getBookedSlots,
     getDoctorAppointments,
     getPatientAppointments,
     getRoomId,
@@ -24,6 +25,7 @@ router.use(verifyUser); // applies to all routes
 router.post('/create-appointment', verifyJWT, createAppointment);
 router.get('/patient-appointments', verifyJWT, getPatientAppointments);
 router.get('/doctor-appointments', verifyJWT, getDoctorAppointments);
+router.get("/booked-slots", verifyUser, getBookedSlots);
 router.put('/cancel-appointment/:appointmentId', verifyJWT, cancelAppointment);
 router.put('/update-appointment/:appointmentId', verifyJWT, updateAppointmentStatus);
 
