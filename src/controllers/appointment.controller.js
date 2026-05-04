@@ -8,6 +8,16 @@ import { Patient } from "../models/patient.model.js";
 import { notifyAppointmentChange } from "../utils/notificatoinService.js";
 import mongoose from "mongoose";
 
+
+const VALID_TRANSITIONS = {
+    pending: ["approved", "cancelled", "rescheduled"],
+    approved: ["cancelled", "completed", "rescheduled"],
+    rescheduled: ["approved", "cancelled"],
+    cancelled: [],  // terminal
+    completed: [],  // terminal
+    expired: [],  // terminal
+};
+
 const populateForNotification = (appointmentId) =>
     Appointment.findById(appointmentId)
         .populate({ path: "patient", populate: { path: "user", select: "_id username" } })
@@ -21,11 +31,11 @@ const sendNotification = async (appointmentId, status) => {
             appointment: {
                 ...appt.toObject(),
                 patientUserId: appt.patient?.user?._id,
-                doctorUserId:  appt.doctor?.userId?._id,
+                doctorUserId: appt.doctor?.userId?._id,
             },
             status,
-            doctorName:  appt.doctor?.userId?.username  ?? "Doctor",
-            patientName: appt.patient?.user?.username   ?? "Patient",
+            doctorName: appt.doctor?.userId?.username ?? "Doctor",
+            patientName: appt.patient?.user?.username ?? "Patient",
         });
     } catch (err) {
         // Never let a notification failure break the actual API response
@@ -83,12 +93,12 @@ export const createAppointment = asyncHandler(async (req, res) => {
         doctor: doctorId,
         appointmentDate: selectedDate,
         timeSlot,
-        status: "approved",
+        status: { $in: ["approved", "rescheduled"] },
     });
-
     if (isSlotTaken) {
-        throw new ApiError(409, "This time slot has already been booked by another patient");
+        throw new ApiError(409, "This time slot is already booked");
     }
+
 
     const appointment = await Appointment.create({
         patient: patientProfile._id,
@@ -196,6 +206,13 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
+      const allowed = VALID_TRANSITIONS[appointment.status] || [];
+    if (!allowed.includes(status)) {
+        throw new ApiError(400,
+            `Cannot change status from "${appointment.status}" to "${status}"`
+        );
+    }
+
     const doctorProfile = await Doctor.findOne({ userId: req.user._id });
     const patientProfile = await Patient.findOne({ user: req.user._id });
 
@@ -214,7 +231,7 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Forbidden: Unrecognized role");
     }
 
-    if (isPatient) {
+     if (isPatient) {
         if (status === "approved") {
             if (appointment.status !== "rescheduled") {
                 throw new ApiError(400, "You can only accept rescheduled appointments");
@@ -223,22 +240,35 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
             appointment.cancelledBy = "patient";
             appointment.cancellationReason = cancellationReason || "Cancelled by patient";
         } else {
-            throw new ApiError(403, "Patients can only accept reschedules or cancel appointments");
+            throw new ApiError(403, "Patients can only accept reschedules or cancel");
         }
     }
 
-    if (isDoctor) {
+   if (isDoctor) {
         if (status === "approved") {
             appointment.meetingLink = meetingLink;
             if (!appointment.roomID && appointment.consultationType !== "chat") {
                 appointment.roomID = `room_${appointment._id}_${Math.random().toString(36).substring(7)}`;
             }
         } else if (status === "rescheduled") {
-            if (!newAppointmentDate || !newTimeSlot) {
-                throw new ApiError(400, "New date and time slot are required for rescheduling");
+            if (new Date(newAppointmentDate) <= new Date()) {
+                throw new ApiError(400, "Reschedule date must be in the future");
             }
+
+            const isSlotTaken = await Appointment.findOne({
+                doctor: doctorProfile._id,
+                appointmentDate: new Date(newAppointmentDate),
+                timeSlot: newTimeSlot,
+                status: { $in: ["approved", "rescheduled"] },
+                _id: { $ne: appointment._id }, 
+            });
+            if (isSlotTaken) {
+                throw new ApiError(409, "This new time slot is already booked");
+            }
+
             appointment.appointmentDate = newAppointmentDate;
             appointment.timeSlot = newTimeSlot;
+
         } else if (status === "cancelled") {
             appointment.cancelledBy = "doctor";
             appointment.cancellationReason = cancellationReason || "Cancelled by doctor";
@@ -254,6 +284,7 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         }
     }
 
+
     appointment.status = status;
     if (doctorNotes) appointment.doctorNotes = doctorNotes;
 
@@ -268,7 +299,6 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
 });
 
 export const cancelAppointment = asyncHandler(async (req, res) => {
-
     const validation = cancelAppointmentSchema.safeParse(req.body);
     if (!validation.success) {
         throw new ApiError(400, "Invalid cancellation data", validation.error.errors);
@@ -286,28 +316,29 @@ export const cancelAppointment = asyncHandler(async (req, res) => {
         throw new ApiError(403, "You can only cancel your own appointments");
     }
 
-    if (["cancelled", "completed"].includes(appointment.status)) {
-        throw new ApiError(400, `Appointment is already ${appointment.status}`);
+    // FIX 1: use transition map
+    const allowed = VALID_TRANSITIONS[appointment.status] || [];
+    if (!allowed.includes("cancelled")) {
+        throw new ApiError(400, `Cannot cancel an appointment that is already ${appointment.status}`);
     }
 
     appointment.status = "cancelled";
     appointment.cancelledBy = "patient";
     appointment.cancellationReason = cancellationReason || "Cancelled by patient";
 
-    if (appointment.payment.status === "paid") {
+    if (appointment.payment?.status === "paid") {
         appointment.payment.status = "refunded";
         appointment.payment.refundedAt = new Date();
     }
 
     await appointment.save();
-
-    // ── NOTIFY: tell the doctor their appointment was cancelled ──────────────
     await sendNotification(appointment._id, "cancelled");
 
     return res.status(200).json(
         new ApiResponse(200, appointment, "Appointment cancelled successfully")
     );
 });
+
 
 export const startCall = asyncHandler(async (req, res) => {
     const doctorProfile = await Doctor.findOne({ userId: req.user._id });
@@ -360,37 +391,26 @@ export const endCall = asyncHandler(async (req, res) => {
     const isPatient = patientProfile && appointment.patient.toString() === patientProfile._id.toString();
 
     if (!isDoctor && !isPatient) {
-        throw new ApiError(403, "You are not authorized to end this call");
+        throw new ApiError(403, "Not authorized to end this call");
     }
 
     const now = new Date();
     appointment.meetingEndedAt = now;
+
     if (appointment.callLogs?.startedAt) {
         const durationMs = now - appointment.callLogs.startedAt;
-        appointment.callLogs.endedAt          = now;
-        appointment.callLogs.duration         = Math.floor(durationMs / 1000);
+        appointment.callLogs.endedAt           = now;
+        appointment.callLogs.duration          = Math.floor(durationMs / 1000);
         appointment.callLogs.terminationReason = "normal";
     }
+
     await appointment.save();
 
-    if (isDoctor) {
-        const { Prescription } = await import("../models/prescription.model.js");
-        const existing = await Prescription.findOne({ appointmentId: appointment._id });
-        if (!existing) {
-            await Prescription.create({
-                appointmentId: appointment._id,
-                doctorId:      doctorProfile._id,
-                patientId:     appointment.patient,
-                diagnosis:     "Pending — to be updated by doctor",
-                medicines:     [{ name: "N/A", dosage: "N/A", duration: "N/A" }],
-                notes:         appointment.reasonForVisit || "",
-                isDraft:       true,
-            });
-        }
-    }
-
-    return res.status(200).json(new ApiResponse(200, appointment, "Call ended"));
+    return res.status(200).json(
+        new ApiResponse(200, appointment, "Call ended")
+    );
 });
+
 
 export const getRoomId = asyncHandler(async (req, res) => {
     const patientProfile = await Patient.findOne({ user: req.user._id });
@@ -420,17 +440,28 @@ export const completeCall = asyncHandler(async (req, res) => {
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-    if (appointment.doctor.toString() !== doctorProfile._id.toString())
+    if (appointment.doctor.toString() !== doctorProfile._id.toString()) {
         throw new ApiError(403, "Not your appointment");
+    }
+
+    // FIX 1: use transition map
+    const allowed = VALID_TRANSITIONS[appointment.status] || [];
+    if (!allowed.includes("completed")) {
+        throw new ApiError(400,
+            `Cannot complete an appointment with status "${appointment.status}"`
+        );
+    }
 
     const now = new Date();
     appointment.meetingEndedAt = now;
+    appointment.status = "completed";
+
     if (appointment.callLogs?.startedAt) {
-        appointment.callLogs.endedAt          = now;
-        appointment.callLogs.duration         = Math.floor((now - appointment.callLogs.startedAt) / 1000);
+        appointment.callLogs.endedAt           = now;
+        appointment.callLogs.duration          = Math.floor((now - appointment.callLogs.startedAt) / 1000);
         appointment.callLogs.terminationReason = "normal";
     }
-    appointment.status = "completed";
+
     await appointment.save();
 
     const { Prescription } = await import("../models/prescription.model.js");
@@ -447,10 +478,11 @@ export const completeCall = asyncHandler(async (req, res) => {
         });
     }
 
-    // ── NOTIFY: tell the patient their call is marked as completed ───────────
     await sendNotification(appointment._id, "completed");
 
-    return res.status(200).json(new ApiResponse(200, appointment, "Call completed"));
+    return res.status(200).json(
+        new ApiResponse(200, appointment, "Appointment completed")
+    );
 });
 
 export const markAsPaid = asyncHandler(async (req, res) => {
@@ -460,15 +492,22 @@ export const markAsPaid = asyncHandler(async (req, res) => {
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-    if (appointment.patient.toString() !== patientProfile._id.toString())
+    if (appointment.patient.toString() !== patientProfile._id.toString()) {
         throw new ApiError(403, "Not your appointment");
+    }
 
-    if (appointment.payment.status === "paid")
+    if (appointment.payment.status === "paid") {
         throw new ApiError(400, "Already paid");
+    }
 
-    appointment.payment.status      = "paid";
-    appointment.payment.method      = "cash";
-    appointment.payment.paidAt      = new Date();
+    // FIX: only allow payment on approved appointments
+    if (appointment.status !== "approved") {
+        throw new ApiError(400, "Can only pay for approved appointments");
+    }
+
+    appointment.payment.status          = "paid";
+    appointment.payment.method          = "cash";
+    appointment.payment.paidAt          = new Date();
     appointment.payment.paymentVerified = true;
 
     await appointment.save();
@@ -478,40 +517,25 @@ export const markAsPaid = asyncHandler(async (req, res) => {
     );
 });
 
+// ─── expireAppointments ───────────────────────────────────────────────────────
+// FIX 4: DB-level update instead of loading all in memory
 export const expireAppointments = asyncHandler(async (req, res) => {
     const now = new Date();
 
-    const parseSlotEnd = (appointmentDate, timeSlot) => {
-        try {
-            const endPart = timeSlot.split(" - ")[1]?.trim();
-            if (!endPart) return null;
-            const [timePart, meridiem] = endPart.split(" ");
-            let [hours, minutes] = timePart.split(":").map(Number);
-            if (meridiem === "PM" && hours !== 12) hours += 12;
-            if (meridiem === "AM" && hours === 12) hours = 0;
-            const base = new Date(appointmentDate);
-            return new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes, 0);
-        } catch { return null; }
-    };
-
-    const candidates = await Appointment.find({
-        status: { $in: ["pending", "approved", "rescheduled"] },
-    });
-
-    let expiredCount = 0;
-    for (const appt of candidates) {
-        const slotEnd = parseSlotEnd(appt.appointmentDate, appt.timeSlot);
-        if (slotEnd && now > slotEnd) {
-            await Appointment.updateOne(
-                { _id: appt._id },
-                { $set: { status: "expired" } }
-            );
-            expiredCount++;
-        }
-    }
+    // FIX: let MongoDB do the work — no more JS loops over all appointments
+    const result = await Appointment.updateMany(
+        {
+            status: { $in: ["pending", "approved", "rescheduled"] },
+            appointmentDate: { $lt: now },
+        },
+        { $set: { status: "expired" } }
+    );
 
     return res.status(200).json(
-        new ApiResponse(200, { expiredCount }, `${expiredCount} appointments marked as expired`)
+        new ApiResponse(200,
+            { expiredCount: result.modifiedCount },
+            `${result.modifiedCount} appointments marked as expired`
+        )
     );
 });
 
