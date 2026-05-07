@@ -20,8 +20,9 @@ const VALID_TRANSITIONS = {
 
 const populateForNotification = (appointmentId) =>
     Appointment.findById(appointmentId)
-        .populate({ path: "patient", populate: { path: "user", select: "_id username" } })
-        .populate({ path: "doctor", populate: { path: "userId", select: "_id username" } });
+        .populate({ path: "patient", populate: { path: "user", select: "_id username email" } }) 
+        .populate({ path: "doctor", populate: { path: "userId", select: "_id username email" } }); 
+
 
 const sendNotification = async (appointmentId, status) => {
     try {
@@ -32,6 +33,8 @@ const sendNotification = async (appointmentId, status) => {
                 ...appt.toObject(),
                 patientUserId: appt.patient?.user?._id,
                 doctorUserId: appt.doctor?.userId?._id,
+                  patientEmail:  appt.patient?.user?.email,
+                doctorEmail:   appt.doctor?.userId?.email, 
             },
             status,
             doctorName: appt.doctor?.userId?.username ?? "Doctor",
