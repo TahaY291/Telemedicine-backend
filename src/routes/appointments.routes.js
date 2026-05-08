@@ -23,7 +23,7 @@ const router = Router();
 router.use(verifyUser);
 
 // ── Named routes first ────────────────────────────────────────────────────────
-router.post("/create-appointment",                    verifyJWT, authorizeRole("patient"), createAppointment);
+router.post("/create-appointment",                    verifyJWT, authorizeRole("patient",'doctor'), createAppointment);
 router.get("/patient-appointments",                   verifyJWT, authorizeRole("patient"), getPatientAppointments);
 router.get("/doctor-appointments",                    verifyJWT, authorizeRole("doctor"),  getDoctorAppointments);
 router.get("/booked-slots",                           verifyJWT,                        getBookedSlots);
