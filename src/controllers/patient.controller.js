@@ -19,7 +19,7 @@ export const createdPatientProfile = asyncHandler(async (req, res) => {
         if (!cloudinaryResponse) {
             throw new ApiError(500, "Failed to upload profile image");
         }
-        profileImage = cloudinaryResponse.url;
+        profileImage = cloudinaryResponse.secure_url;
     }
 
     const { personalInfo, medicalInfo, emergencyInfo, phoneNumber } = req.body;
@@ -91,7 +91,7 @@ export const updatePatientProfile = asyncHandler(async (req, res) => {
         if (!cloudinaryResponse) {
             throw new ApiError(500, "Failed to upload profile image");
         }
-        profileImage = cloudinaryResponse.url;
+        profileImage = cloudinaryResponse.secure_url;
     }
 
     if (profileImage) {
@@ -145,13 +145,13 @@ export const uploadPatientProfileImage = asyncHandler(async (req, res) => {
     }
 
     const cloudinaryResponse = await uploadOnCloudinary(req.file.path);
-    if (!cloudinaryResponse?.url) {
+    if (!cloudinaryResponse?.secure_url) {
         throw new ApiError(500, "Failed to upload profile image");
     }
 
     const updatedProfile = await Patient.findOneAndUpdate(
         { user: userId },
-        { $set: { "personalInfo.profileImage": cloudinaryResponse.url } },
+        { $set: { "personalInfo.profileImage": cloudinaryResponse.secure_url } },
         { new: true, runValidators: true }
     ).populate("user", "username email role");
 
