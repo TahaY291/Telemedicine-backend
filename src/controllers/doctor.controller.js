@@ -25,14 +25,14 @@ export const createDoctorProfile = asyncHandler(async (req, res) => {
     let doctorImageUrl = null;
     let certificateImageUrl = null;
 
-    if (req.files?.doctorImage?.[0]?.path) {
-        const uploaded = await uploadOnCloudinary(req.files.doctorImage[0].path);
+    if (req.files?.doctorImage?.[0]?.buffer) {
+        const uploaded = await uploadOnCloudinary(req.files.doctorImage[0].buffer);
         if (!uploaded) throw new ApiError(500, "Doctor image upload failed");
         doctorImageUrl = uploaded.secure_url;
     }
 
-    if (req.files?.certificateImage?.[0]?.path) {
-        const uploaded = await uploadOnCloudinary(req.files.certificateImage[0].path);
+    if (req.files?.certificateImage?.[0]?.buffer) {
+        const uploaded = await uploadOnCloudinary(req.files.certificateImage[0].buffer);
         if (!uploaded) throw new ApiError(500, "Certificate upload failed");
         certificateImageUrl = uploaded.secure_url;
     }
@@ -132,15 +132,15 @@ export const updateDoctorProfile = asyncHandler(async (req, res) => {
     }
 
     // 🔹 Handle doctor image upload
-    if (req.files?.doctorImage?.[0]?.path) {
-        const uploaded = await uploadOnCloudinary(req.files.doctorImage[0].path);
+    if (req.files?.doctorImage?.[0]?.buffer) {
+        const uploaded = await uploadOnCloudinary(req.files.doctorImage[0].buffer);
         if (!uploaded) throw new ApiError(500, "Doctor image upload failed");
         updateData.doctorImage = uploaded.secure_url;
     }
 
     // 🔹 Handle certificate upload
-    if (req.files?.certificateImage?.[0]?.path) {
-        const uploaded = await uploadOnCloudinary(req.files.certificateImage[0].path);
+    if (req.files?.certificateImage?.[0]?.buffer) {
+        const uploaded = await uploadOnCloudinary(req.files.certificateImage[0].buffer);
         if (!uploaded) throw new ApiError(500, "Certificate upload failed");
         updateData.certificateImage = uploaded.secure_url;
     }

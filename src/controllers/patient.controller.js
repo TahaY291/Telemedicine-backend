@@ -14,8 +14,8 @@ export const createdPatientProfile = asyncHandler(async (req, res) => {
     }
 
     let profileImage = null;
-    if (req.file?.path) {
-        const cloudinaryResponse = await uploadOnCloudinary(req.file.path);
+    if (req.file?.buffer) {
+        const cloudinaryResponse = await uploadOnCloudinary(req.file.buffer);
         if (!cloudinaryResponse) {
             throw new ApiError(500, "Failed to upload profile image");
         }
@@ -86,8 +86,8 @@ export const updatePatientProfile = asyncHandler(async (req, res) => {
     }
 
     let profileImage = null;
-    if (req.file?.path) {
-        const cloudinaryResponse = await uploadOnCloudinary(req.file.path);
+    if (req.file?.buffer) {
+        const cloudinaryResponse = await uploadOnCloudinary(req.file.buffer);
         if (!cloudinaryResponse) {
             throw new ApiError(500, "Failed to upload profile image");
         }
@@ -140,11 +140,11 @@ export const getPatientById = asyncHandler(async (req, res) => {
 export const uploadPatientProfileImage = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
-    if (!req.file?.path) {
+    if (!req.file?.buffer) {
         throw new ApiError(400, "No image file provided");
     }
 
-    const cloudinaryResponse = await uploadOnCloudinary(req.file.path);
+    const cloudinaryResponse = await uploadOnCloudinary(req.file.buffer);
     if (!cloudinaryResponse?.secure_url) {
         throw new ApiError(500, "Failed to upload profile image");
     }
