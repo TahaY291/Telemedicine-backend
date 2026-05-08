@@ -7,17 +7,18 @@ import {
 import verifyJWT from "../middlewares/verifyjwt.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyUser } from "../middlewares/auth.middleware.js";
-
+import { authorizeRole } from "../middlewares/authorizeRole.middleware.js";
 const router = Router();
+
 
 // ── Public ──────────────────────────────────────────────
 router.get("/doctors", listDoctors);
 
 // ── Specific routes FIRST (before :doctorId wildcard) ──
-router.get("/doctor-profile/me",        verifyUser, verifyJWT, getMyProfile);
-router.get("/doctor-stats",             verifyUser, verifyJWT, getDoctorStats);
-router.get("/my-patients",              verifyUser, verifyJWT, getMyPatients);
-router.get("/patient/:patientId/records", verifyUser, verifyJWT, getPatientRecords);
+router.get("/doctor-profile/me",        verifyUser, verifyJWT, authorizeRole('doctor'), getMyProfile);
+router.get("/doctor-stats",             verifyUser, verifyJWT,authorizeRole('doctor'), getDoctorStats);
+router.get("/my-patients",              verifyUser, verifyJWT, authorizeRole('doctor'),getMyPatients);
+router.get("/patient/:patientId/records", verifyUser, verifyJWT,authorizeRole('doctor'), getPatientRecords);
 
 // ── Parameterized route LAST ─────────────────────────────
 router.get("/doctor-profile/:doctorId", verifyUser, verifyJWT, getDoctorById);

@@ -3,8 +3,10 @@ import { createdPatientProfile, deletePatientProfile, getMyProfile, getPatientBy
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyUser } from "../middlewares/auth.middleware.js";
 import verifyJWT from "../middlewares/verifyjwt.middleware.js";
+import { authorizeRole } from "../middlewares/authorizeRole.middleware.js";
 
 const router = Router()
+
 
 router.post(
     '/patient-profile',
@@ -20,9 +22,8 @@ router.patch(
     updatePatientProfile
 )
 
-router.delete('/patient-profile',verifyJWT,verifyUser, deletePatientProfile)
 
-router.get('/patient-profile/me',verifyJWT, verifyUser, getMyProfile)
+router.get('/patient-profile/me',verifyJWT, verifyUser,authorizeRole("patient"), getMyProfile)
 router.get('/patient-profile/:patientId',verifyJWT, verifyUser, getPatientById)
 
 
@@ -31,8 +32,10 @@ router.patch(
     verifyJWT,
     verifyUser,
     upload.single("profileImage"),
-    uploadPatientProfileImage
+    uploadPatientProfileImage,
+    authorizeRole("patient"),
 )
 
+router.delete('/patient-profile',verifyJWT,verifyUser,authorizeRole("patient"),  deletePatientProfile)
 
 export default router

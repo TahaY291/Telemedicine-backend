@@ -16,33 +16,26 @@ import {
     startCall,
     updateAppointmentStatus
 } from "../controllers/appointment.controller.js";
+import { authorizeRole } from "../middlewares/authorizeRole.middleware.js";
 
 const router = Router();
 
 router.use(verifyUser);
 
-// ── Role restriction helper ───────────────────────────────────────────────────
-const restrictTo = (...roles) => (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-        return res.status(403).json({ message: `Access denied for role: ${req.user.role}` });
-    }
-    next();
-};
-
 // ── Named routes first ────────────────────────────────────────────────────────
-router.post("/create-appointment",                    verifyJWT, restrictTo("patient"), createAppointment);
-router.get("/patient-appointments",                   verifyJWT, restrictTo("patient"), getPatientAppointments);
-router.get("/doctor-appointments",                    verifyJWT, restrictTo("doctor"),  getDoctorAppointments);
+router.post("/create-appointment",                    verifyJWT, authorizeRole("patient"), createAppointment);
+router.get("/patient-appointments",                   verifyJWT, authorizeRole("patient"), getPatientAppointments);
+router.get("/doctor-appointments",                    verifyJWT, authorizeRole("doctor"),  getDoctorAppointments);
 router.get("/booked-slots",                           verifyJWT,                        getBookedSlots);
-router.put("/cancel-appointment/:appointmentId",      verifyJWT, restrictTo("patient"), cancelAppointment);
-router.put("/update-appointment/:appointmentId",      verifyJWT, restrictTo("doctor"),  updateAppointmentStatus);
+router.put("/cancel-appointment/:appointmentId",      verifyJWT, authorizeRole("patient"), cancelAppointment);
+router.put("/update-appointment/:appointmentId",      verifyJWT, authorizeRole("doctor"),  updateAppointmentStatus);
 
 // ── Parameterized routes last ─────────────────────────────────────────────────
 router.get( "/:appointmentId/room",                   verifyJWT,                        getRoomId);
-router.post("/:appointmentId/start-call",             verifyJWT, restrictTo("doctor"),  startCall);
+router.post("/:appointmentId/start-call",             verifyJWT, authorizeRole("doctor"),  startCall);
 router.post("/:appointmentId/end-call",               verifyJWT,                        endCall);
-router.post("/:appointmentId/complete-call",          verifyJWT, restrictTo("doctor"),  completeCall);
-router.post("/:appointmentId/pay",                    verifyJWT, restrictTo("patient"), markAsPaid);  // ← role guard added
+router.post("/:appointmentId/complete-call",          verifyJWT, authorizeRole("doctor"),  completeCall);
+router.post("/:appointmentId/pay",                    verifyJWT, authorizeRole("patient"), markAsPaid);  // ← role guard added
 router.get( "/:appointmentId",                        verifyJWT,                        getAppointmentById);
 
 // ── Utility ───────────────────────────────────────────────────────────────────

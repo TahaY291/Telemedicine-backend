@@ -10,6 +10,7 @@ import {
     clearAllNotifications,
 } from "../controllers/notification.controller.js";
 import verifyJWT from "../middlewares/verifyjwt.middleware.js";
+import { authorizeRole } from "../middlewares/authorizeRole.middleware.js";
 
 const router = express.Router();
 
