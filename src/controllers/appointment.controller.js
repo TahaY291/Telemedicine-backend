@@ -20,8 +20,8 @@ const VALID_TRANSITIONS = {
 
 const populateForNotification = (appointmentId) =>
     Appointment.findById(appointmentId)
-        .populate({ path: "patient", populate: { path: "user", select: "_id username email" } }) 
-        .populate({ path: "doctor", populate: { path: "userId", select: "_id username email" } }); 
+        .populate({ path: "patient", populate: { path: "user", select: "_id username email" } })
+        .populate({ path: "doctor", populate: { path: "userId", select: "_id username email" } });
 
 
 const sendNotification = async (appointmentId, status) => {
@@ -33,8 +33,8 @@ const sendNotification = async (appointmentId, status) => {
                 ...appt.toObject(),
                 patientUserId: appt.patient?.user?._id,
                 doctorUserId: appt.doctor?.userId?._id,
-                  patientEmail:  appt.patient?.user?.email,
-                doctorEmail:   appt.doctor?.userId?.email, 
+                patientEmail: appt.patient?.user?.email,
+                doctorEmail: appt.doctor?.userId?.email,
             },
             status,
             doctorName: appt.doctor?.userId?.username ?? "Doctor",
@@ -118,9 +118,9 @@ export const createAppointment = asyncHandler(async (req, res) => {
         },
     });
 
-    // ── NOTIFY: tell the doctor a new booking request arrived ────────────────
-    await sendNotification(appointment._id, "pending");
-
+    sendNotification(appointment._id, "pending").catch(err =>
+        console.error("Notification failed:", err.message)
+    );
     return res.status(201).json(
         new ApiResponse(201, appointment, "Appointment request sent to doctor")
     );
@@ -209,7 +209,7 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-      const allowed = VALID_TRANSITIONS[appointment.status] || [];
+    const allowed = VALID_TRANSITIONS[appointment.status] || [];
     if (!allowed.includes(status)) {
         throw new ApiError(400,
             `Cannot change status from "${appointment.status}" to "${status}"`
@@ -234,7 +234,7 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Forbidden: Unrecognized role");
     }
 
-     if (isPatient) {
+    if (isPatient) {
         if (status === "approved") {
             if (appointment.status !== "rescheduled") {
                 throw new ApiError(400, "You can only accept rescheduled appointments");
@@ -247,7 +247,7 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
         }
     }
 
-   if (isDoctor) {
+    if (isDoctor) {
         if (status === "approved") {
             appointment.meetingLink = meetingLink;
             if (!appointment.roomID && appointment.consultationType !== "chat") {
@@ -263,7 +263,7 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
                 appointmentDate: new Date(newAppointmentDate),
                 timeSlot: newTimeSlot,
                 status: { $in: ["approved", "rescheduled"] },
-                _id: { $ne: appointment._id }, 
+                _id: { $ne: appointment._id },
             });
             if (isSlotTaken) {
                 throw new ApiError(409, "This new time slot is already booked");
@@ -293,8 +293,9 @@ export const updateAppointmentStatus = asyncHandler(async (req, res) => {
 
     await appointment.save();
 
-    // ── NOTIFY: tell the right person about the status change ────────────────
-    await sendNotification(appointment._id, status);
+    sendNotification(appointment._id, status).catch(err =>
+        console.error("Notification failed:", err.message)
+    );
 
     return res.status(200).json(
         new ApiResponse(200, appointment, `Appointment ${status} successfully`)
@@ -335,7 +336,9 @@ export const cancelAppointment = asyncHandler(async (req, res) => {
     }
 
     await appointment.save();
-    await sendNotification(appointment._id, "cancelled");
+    sendNotification(appointment._id, "cancelled").catch(err =>
+        console.error("Notification failed:", err.message)
+    );
 
     return res.status(200).json(
         new ApiResponse(200, appointment, "Appointment cancelled successfully")
@@ -387,10 +390,10 @@ export const endCall = asyncHandler(async (req, res) => {
     const appointment = await Appointment.findById(req.params.appointmentId);
     if (!appointment) throw new ApiError(404, "Appointment not found");
 
-    const doctorProfile  = await Doctor.findOne({ userId: req.user._id });
+    const doctorProfile = await Doctor.findOne({ userId: req.user._id });
     const patientProfile = await Patient.findOne({ user: req.user._id });
 
-    const isDoctor  = doctorProfile  && appointment.doctor.toString()  === doctorProfile._id.toString();
+    const isDoctor = doctorProfile && appointment.doctor.toString() === doctorProfile._id.toString();
     const isPatient = patientProfile && appointment.patient.toString() === patientProfile._id.toString();
 
     if (!isDoctor && !isPatient) {
@@ -402,8 +405,8 @@ export const endCall = asyncHandler(async (req, res) => {
 
     if (appointment.callLogs?.startedAt) {
         const durationMs = now - appointment.callLogs.startedAt;
-        appointment.callLogs.endedAt           = now;
-        appointment.callLogs.duration          = Math.floor(durationMs / 1000);
+        appointment.callLogs.endedAt = now;
+        appointment.callLogs.duration = Math.floor(durationMs / 1000);
         appointment.callLogs.terminationReason = "normal";
     }
 
@@ -460,8 +463,8 @@ export const completeCall = asyncHandler(async (req, res) => {
     appointment.status = "completed";
 
     if (appointment.callLogs?.startedAt) {
-        appointment.callLogs.endedAt           = now;
-        appointment.callLogs.duration          = Math.floor((now - appointment.callLogs.startedAt) / 1000);
+        appointment.callLogs.endedAt = now;
+        appointment.callLogs.duration = Math.floor((now - appointment.callLogs.startedAt) / 1000);
         appointment.callLogs.terminationReason = "normal";
     }
 
@@ -472,16 +475,18 @@ export const completeCall = asyncHandler(async (req, res) => {
     if (!existing) {
         await Prescription.create({
             appointmentId: appointment._id,
-            doctorId:      doctorProfile._id,
-            patientId:     appointment.patient,
-            diagnosis:     "Pending — to be updated by doctor",
-            medicines:     [{ name: "N/A", dosage: "N/A", duration: "N/A" }],
-            notes:         appointment.reasonForVisit || "",
-            isDraft:       true,
+            doctorId: doctorProfile._id,
+            patientId: appointment.patient,
+            diagnosis: "Pending — to be updated by doctor",
+            medicines: [{ name: "N/A", dosage: "N/A", duration: "N/A" }],
+            notes: appointment.reasonForVisit || "",
+            isDraft: true,
         });
     }
 
-    await sendNotification(appointment._id, "completed");
+    sendNotification(appointment._id, "completed").catch(err =>
+        console.error("Notification failed:", err.message)
+    );
 
     return res.status(200).json(
         new ApiResponse(200, appointment, "Appointment completed")
@@ -508,9 +513,9 @@ export const markAsPaid = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Can only pay for approved appointments");
     }
 
-    appointment.payment.status          = "paid";
-    appointment.payment.method          = "cash";
-    appointment.payment.paidAt          = new Date();
+    appointment.payment.status = "paid";
+    appointment.payment.method = "cash";
+    appointment.payment.paidAt = new Date();
     appointment.payment.paymentVerified = true;
 
     await appointment.save();

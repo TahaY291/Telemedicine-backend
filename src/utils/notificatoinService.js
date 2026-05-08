@@ -29,19 +29,19 @@ export const notifyAppointmentChange = async ({
 
         // Portal message
         const portalMsg = {
-            approved:    `Your appointment with Dr. ${doctorName} has been approved.`,
+            approved: `Your appointment with Dr. ${doctorName} has been approved.`,
             rescheduled: `Dr. ${doctorName} has requested to reschedule your appointment.`,
-            completed:   `Your appointment with Dr. ${doctorName} is marked as completed.`,
-            cancelled:   `Your appointment was cancelled by the doctor.`,
-            expired:     `Your appointment on ${apptDate} at ${timeSlot} has expired.`,
+            completed: `Your appointment with Dr. ${doctorName} is marked as completed.`,
+            cancelled: `Your appointment was cancelled by the doctor.`,
+            expired: `Your appointment on ${apptDate} at ${timeSlot} has expired.`,
         }[status];
 
         // ── SSE portal notification ──
         const n = await Notification.create({
-            recipient:     appointment.patientUserId,
+            recipient: appointment.patientUserId,
             recipientRole: "patient",
-            type:          `appointment_${status}`,
-            message:       portalMsg,
+            type: `appointment_${status}`,
+            message: portalMsg,
             appointmentId: appointment._id,
         });
         sseManager.send(appointment.patientUserId.toString(), n);
@@ -49,11 +49,11 @@ export const notifyAppointmentChange = async ({
         // ── Email to patient ──
         if (appointment.patientEmail) {
             const subjects = {
-                approved:    `Appointment Confirmed — Dr. ${doctorName}`,
+                approved: `Appointment Confirmed — Dr. ${doctorName}`,
                 rescheduled: `Appointment Rescheduled — Dr. ${doctorName}`,
-                completed:   `Consultation Completed — Dr. ${doctorName}`,
-                cancelled:   `Appointment Cancelled — Dr. ${doctorName}`,
-                expired:     `Appointment Expired`,
+                completed: `Consultation Completed — Dr. ${doctorName}`,
+                cancelled: `Appointment Cancelled — Dr. ${doctorName}`,
+                expired: `Appointment Expired`,
             };
 
             const bodies = {
@@ -69,18 +69,15 @@ export const notifyAppointmentChange = async ({
             };
 
             const mailOptions = {
-                from:    process.env.SENDER_EMAIL,
-                to:      appointment.patientEmail,
+                from: process.env.SENDER_EMAIL,
+                to: appointment.patientEmail,
                 subject: subjects[status],
-                text:    bodies[status],
+                text: bodies[status],
             };
 
-            try {
-                await transporter.sendMail(mailOptions);
-            } catch (err) {
-                console.error("Patient email failed:", err.message);
-                // never break the main flow
-            }
+            transporter.sendMail(mailOptions).catch(err =>
+                console.error("Patient email failed:", err.message)
+            );
         }
     }
 
@@ -89,16 +86,16 @@ export const notifyAppointmentChange = async ({
 
         // Portal message
         const portalMsg = {
-            pending:   `New appointment request received from ${patientName}.`,
+            pending: `New appointment request received from ${patientName}.`,
             cancelled: `${patientName} has cancelled their appointment.`,
         }[status];
 
         // ── SSE portal notification ──
         const n = await Notification.create({
-            recipient:     appointment.doctorUserId,
+            recipient: appointment.doctorUserId,
             recipientRole: "doctor",
-            type:          `appointment_${status}`,
-            message:       portalMsg,
+            type: `appointment_${status}`,
+            message: portalMsg,
             appointmentId: appointment._id,
         });
         sseManager.send(appointment.doctorUserId.toString(), n);
@@ -106,7 +103,7 @@ export const notifyAppointmentChange = async ({
         // ── Email to doctor ──
         if (appointment.doctorEmail) {
             const subjects = {
-                pending:   `New Appointment Request — ${patientName}`,
+                pending: `New Appointment Request — ${patientName}`,
                 cancelled: `Appointment Cancelled — ${patientName}`,
             };
 
@@ -117,10 +114,10 @@ export const notifyAppointmentChange = async ({
             };
 
             const mailOptions = {
-                from:    process.env.SENDER_EMAIL,
-                to:      appointment.doctorEmail,
+                from: process.env.SENDER_EMAIL,
+                to: appointment.doctorEmail,
                 subject: subjects[status],
-                text:    bodies[status],
+                text: bodies[status],
             };
 
             try {
