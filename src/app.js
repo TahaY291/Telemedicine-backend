@@ -9,7 +9,7 @@ const httpServer = createServer(app);
 
 // ── Middleware FIRST ──────────────────────────────────────────────────────────
 app.use(cors({
-  origin: ["http://localhost:5173", "http://localhost:5174" , "https://telemedicine-admin-black.vercel.app", "https://telemedicine-frontend-three.vercel.app"],
+  origin: process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:5174"],
   credentials: true,
 }));
 app.use(express.json({ limit: '16kb' }));           // ← must be before routes
@@ -20,7 +20,7 @@ app.use(cookieParser());
 // ── Socket.io ─────────────────────────────────────────────────────────────────
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173", "http://localhost:5174" ,"https://telemedicine-admin-black.vercel.app", "https://telemedicine-frontend-three.vercel.app"],
+    origin: process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:5174"],
     credentials: true,
   },
 });
