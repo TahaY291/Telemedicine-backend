@@ -9,7 +9,7 @@ const httpServer = createServer(app);
 
 // ── Middleware FIRST ──────────────────────────────────────────────────────────
 app.use(cors({
-  origin: ["http://localhost:5173", "http://localhost:5174"],
+  origin: ["http://localhost:5173", "http://localhost:5174" , "https://telemedicine-admin-black.vercel.app", "https://telemedicine-frontend-three.vercel.app"],
   credentials: true,
 }));
 app.use(express.json({ limit: '16kb' }));           // ← must be before routes
