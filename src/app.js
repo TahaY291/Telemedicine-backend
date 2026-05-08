@@ -20,7 +20,7 @@ app.use(cookieParser());
 // ── Socket.io ─────────────────────────────────────────────────────────────────
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173", "http://localhost:5174"],
+    origin: ["http://localhost:5173", "http://localhost:5174" ,"https://telemedicine-admin-black.vercel.app", "https://telemedicine-frontend-three.vercel.app"],
     credentials: true,
   },
 });
