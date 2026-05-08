@@ -16,7 +16,7 @@ router.get("/doctors", listDoctors);
 
 // ── Specific routes FIRST (before :doctorId wildcard) ──
 router.get("/doctor-profile/me",        verifyUser, verifyJWT, authorizeRole('doctor'), getMyProfile);
-router.get("/doctor-stats",             verifyUser, verifyJWT,authorizeRole('doctor'), getDoctorStats);
+router.get("/doctor-stats",             verifyUser, verifyJWT,authorizeRole('doctor', 'admin'), getDoctorStats);
 router.get("/my-patients",              verifyUser, verifyJWT, authorizeRole('doctor'),getMyPatients);
 router.get("/patient/:patientId/records", verifyUser, verifyJWT,authorizeRole('doctor'), getPatientRecords);
 
