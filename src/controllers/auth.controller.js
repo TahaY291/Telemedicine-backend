@@ -60,11 +60,11 @@ const roleBasedRegisterUser = asyncHandler(async (req, res) => {
         text: `Dear ${createdUser.username},\n\nThank you for registering as a ${createdUser.role} on our Smart Telemedicine System. We are excited to have you on board!\n\nBest regards,\nSmart Telemedicine Team`
     }
 
-    const response = await transporter.sendMail(mailOptions)
-    if (!response.accepted.length) {
-        throw new ApiError(500, "Failed to send welcome email")
-    }
-    console.log(createdUser)
+    try {
+    await transporter.sendMail(mailOptions)
+} catch (emailError) {
+    console.error("Welcome email failed:", emailError.message)
+}
 
     return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully"))
 
