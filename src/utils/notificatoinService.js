@@ -120,11 +120,9 @@ export const notifyAppointmentChange = async ({
                 text: bodies[status],
             };
 
-            try {
-                await transporter.sendMail(mailOptions);
-            } catch (err) {
-                console.error("Doctor email failed:", err.message);
-            }
+            transporter.sendMail(mailOptions).catch(err =>
+                console.error("Patient email failed:", err.message)
+            );
         }
     }
 };
