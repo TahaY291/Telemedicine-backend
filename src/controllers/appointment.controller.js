@@ -136,8 +136,12 @@ export const getPatientAppointments = asyncHandler(async (req, res) => {
     if (status) filter.status = status;
 
     const appointments = await Appointment.find(filter)
-        .populate("doctor", "userId specialization consultationFee doctorImage")
-        .sort({ appointmentDate: -1 });
+    .populate({
+        path: "doctor",
+        select: "userId specialization consultationFee doctorImage",
+        populate: { path: "userId", select: "username email" },
+    })
+    .sort({ appointmentDate: 1 });
 
     return res
         .status(200)
