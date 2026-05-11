@@ -525,27 +525,71 @@ export const markAsPaid = asyncHandler(async (req, res) => {
     );
 });
 
-// ─── expireAppointments ───────────────────────────────────────────────────────
-// FIX 4: DB-level update instead of loading all in memory
+
 export const expireAppointments = asyncHandler(async (req, res) => {
     const now = new Date();
 
-    // FIX: let MongoDB do the work — no more JS loops over all appointments
-    const result = await Appointment.updateMany(
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const pastResult = await Appointment.updateMany(
         {
             status: { $in: ["pending", "approved", "rescheduled"] },
-            appointmentDate: { $lt: now },
+            appointmentDate: { $lt: startOfToday },
         },
         { $set: { status: "expired" } }
     );
 
+    const todayAppointments = await Appointment.find({
+        status: { $in: ["pending", "approved", "rescheduled"] },
+        appointmentDate: {
+            $gte: startOfToday,
+            $lt: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000),
+        },
+    }).select("_id timeSlot appointmentDate");
+
+    const expiredTodayIds = [];
+
+    for (const appt of todayAppointments) {
+        try {
+            // timeSlot format: "02:30 PM - 03:00 PM"
+            const endPart = appt.timeSlot.split(" - ")[1]?.trim();
+            if (!endPart) continue;
+
+            const [timePart, meridiem] = endPart.split(" ");
+            let [hours, minutes] = timePart.split(":").map(Number);
+            if (meridiem === "PM" && hours !== 12) hours += 12;
+            if (meridiem === "AM" && hours === 12) hours = 0;
+
+            const slotEnd = new Date();
+            slotEnd.setHours(hours, minutes, 0, 0);
+
+            if (slotEnd < now) {
+                expiredTodayIds.push(appt._id);
+            }
+        } catch {
+            // Malformed time slot — skip
+        }
+    }
+
+    let todayResult = { modifiedCount: 0 };
+    if (expiredTodayIds.length > 0) {
+        todayResult = await Appointment.updateMany(
+            { _id: { $in: expiredTodayIds } },
+            { $set: { status: "expired" } }
+        );
+    }
+
+    const totalExpired = pastResult.modifiedCount + todayResult.modifiedCount;
+
     return res.status(200).json(
         new ApiResponse(200,
-            { expiredCount: result.modifiedCount },
-            `${result.modifiedCount} appointments marked as expired`
+            { expiredCount: totalExpired },
+            `${totalExpired} appointments marked as expired`
         )
     );
 });
+
 
 export const getBookedSlots = asyncHandler(async (req, res) => {
     const { doctorId, date } = req.query;
